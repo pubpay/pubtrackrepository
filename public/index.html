@@ -1,0 +1,2797 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - LeadRock Postback Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .slide-down {
+            animation: slideDown 0.3s ease-out;
+        }
+        .pulse-green {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .calendar-day {
+            transition: all 0.2s;
+            min-height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .calendar-day:hover {
+            transform: scale(1.1);
+            z-index: 10;
+        }
+        .calendar-day.has-conversions {
+            background-color: #dbeafe;
+            font-weight: 600;
+        }
+        .calendar-day.has-conversions:hover {
+            background-color: #bfdbfe;
+        }
+        .calendar-day.selected {
+            background-color: #3b82f6;
+            color: white;
+            font-weight: 700;
+        }
+        .calendar-day.selected:hover {
+            background-color: #2563eb;
+        }
+        .calendar-day.today {
+            border: 2px solid #3b82f6;
+        }
+        .tab-button {
+            transition: all 0.2s;
+        }
+        .tab-button.active {
+            border-bottom-color: #3b82f6;
+            color: #3b82f6;
+        }
+        .hierarchy-item {
+            transition: all 0.2s;
+        }
+        .hierarchy-item:hover {
+            background-color: #f3f4f6;
+        }
+        .hierarchy-item.selected {
+            background-color: #dbeafe;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Container principal -->
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">📊 Dashboard LeadRock</h1>
+                    <p class="text-gray-600">Monitoramento de conversões em tempo real</p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="/metricas" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        MÉTRICAS
+                    </a>
+                    <a href="meta-ads.html" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        META ADS
+                    </a>
+                    <button id="btnCadastroProdutos" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        </svg>
+                        Cadastro de Produtos
+                    </button>
+                    <button id="btnProdutos" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                        Produtos
+                    </button>
+                    <button id="btnExtratoCompleto" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Extrato Completo
+                    </button>
+                    <button id="btnAgruparPorSub1Header" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                        </svg>
+                        Agrupar por Conta (Sub1)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Cadastro de Produtos -->
+        <div id="modalCadastroProdutos" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-gray-800">Cadastro de Produtos</h3>
+                        <button id="closeCadastroProdutos" class="text-gray-500 hover:text-gray-700">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <!-- Formulário de Cadastro -->
+                    <form id="formProduto" class="mb-6">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Produto *</label>
+                                <input type="text" id="nomeProduto" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Offer ID do Produto *</label>
+                                <input type="text" id="offerIdProduto" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Nome da Conta *</label>
+                                <input type="text" id="nomeContaProduto" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Nome personalizado para a categoria">
+                            </div>
+                            <button type="submit" class="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
+                                Cadastrar Produto
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <!-- Lista de Produtos Cadastrados -->
+                    <div>
+                        <h4 class="text-lg font-semibold text-gray-800 mb-3">Produtos Cadastrados</h4>
+                        <div id="listaProdutos" class="space-y-2">
+                            <div class="text-center text-gray-500 py-4">Carregando produtos...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Visualização de Produtos -->
+        <div id="modalProdutos" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-gray-800">Selecionar Produto</h3>
+                        <button id="closeProdutos" class="text-gray-500 hover:text-gray-700">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div id="listaProdutosSelecao" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="text-center text-gray-500 py-8">Carregando produtos...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtro de Produto Ativo -->
+        <div id="filtroProdutoAtivo" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                    </svg>
+                    <div>
+                        <div class="font-semibold text-blue-900">Filtro Ativo: <span id="nomeProdutoFiltro"></span></div>
+                        <div class="text-sm text-blue-700">Offer ID: <span id="offerIdFiltro"></span></div>
+                    </div>
+                </div>
+                <button id="removerFiltroProduto" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition-colors">
+                    Remover Filtro
+                </button>
+            </div>
+        </div>
+
+        <!-- Alerta de novo postback -->
+        <div id="alert" class="hidden mb-6 bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg slide-down">
+            <div class="flex items-center">
+                <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="font-semibold">Novo postback recebido!</span>
+            </div>
+        </div>
+
+        <!-- Filtros de Data -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div class="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                <!-- Botão de Seleção de Data -->
+                <div class="flex items-center gap-2">
+                    <button id="datePickerBtn" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 flex items-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <span id="datePickerText">Hoje: <span id="currentDateDisplay"></span></span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    <button id="resetFilter" class="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm">
+                        Ver Todas
+                    </button>
+                </div>
+
+                <!-- Informações do Período Selecionado -->
+                <div class="flex-1 flex items-center gap-4 text-sm">
+                    <div id="selectedPeriodInfo" class="text-gray-600">
+                        <span id="selectedPeriodText">Mostrando todas as conversões</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Date Picker Modal (oculto por padrão) -->
+            <div id="datePickerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                    <div class="p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-800">Selecionar Período</h3>
+                            <button id="closeDatePicker" class="text-gray-500 hover:text-gray-700">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <!-- Opções Rápidas -->
+                            <div class="md:w-64 border-r border-gray-200 pr-6">
+                                <h4 class="font-semibold text-gray-700 mb-3 text-sm">Usados recentemente</h4>
+                                <div class="space-y-1 max-h-96 overflow-y-auto">
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="today" class="mr-2">
+                                        <span class="text-sm">Hoje</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="yesterday" class="mr-2">
+                                        <span class="text-sm">Ontem</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="last7days" class="mr-2">
+                                        <span class="text-sm">Últimos 7 dias</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="last14days" class="mr-2">
+                                        <span class="text-sm">Últimos 14 dias</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="last30days" class="mr-2">
+                                        <span class="text-sm">Últimos 30 dias</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="thisWeek" class="mr-2">
+                                        <span class="text-sm">Esta semana</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="lastWeek" class="mr-2">
+                                        <span class="text-sm">Semana passada</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="thisMonth" class="mr-2">
+                                        <span class="text-sm">Este mês</span>
+                                    </label>
+                                    <label class="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                                        <input type="radio" name="quickDate" value="lastMonth" class="mr-2">
+                                        <span class="text-sm">Mês passado</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Calendário Compacto -->
+                            <div class="flex-1">
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Selecionar intervalo de datas</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="date" id="startDate" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        <span class="text-gray-500">até</span>
+                                        <input type="date" id="endDate" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    </div>
+                                </div>
+
+                                <!-- Calendário Visual Compacto -->
+                                <div class="border border-gray-200 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <button id="prevMonth" class="p-1 hover:bg-gray-100 rounded">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                                            </svg>
+                                        </button>
+                                        <h3 id="currentMonth" class="text-sm font-semibold text-gray-700"></h3>
+                                        <button id="nextMonth" class="p-1 hover:bg-gray-100 rounded">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div id="calendar" class="grid grid-cols-7 gap-1 text-xs">
+                                        <!-- Dias da semana -->
+                                        <div class="text-center font-semibold text-gray-600 py-1 text-xs">D</div>
+                                        <div class="text-center font-semibold text-gray-600 py-1 text-xs">S</div>
+                                        <div class="text-center font-semibold text-gray-600 py-1 text-xs">T</div>
+                                        <div class="text-center font-semibold text-gray-600 py-1 text-xs">Q</div>
+                                        <div class="text-center font-semibold text-gray-600 py-1 text-xs">Q</div>
+                                        <div class="text-center font-semibold text-gray-600 py-1 text-xs">S</div>
+                                        <div class="text-center font-semibold text-gray-600 py-1 text-xs">S</div>
+                                    </div>
+                                </div>
+
+                                <!-- Botões de Ação -->
+                                <div class="flex justify-end gap-2 mt-4">
+                                    <button id="cancelDatePicker" class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                                        Cancelar
+                                    </button>
+                                    <button id="applyDatePicker" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
+                                        Atualizar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estatísticas -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="text-gray-600 text-sm font-medium mb-1">📊 Total de Leads</div>
+                <div class="text-3xl font-bold text-blue-600" id="totalLeads">0</div>
+                <div class="text-xs text-gray-500 mt-1">Todos os leads</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="text-gray-600 text-sm font-medium mb-1">✅ Leads Confirmados</div>
+                <div class="text-3xl font-bold text-green-600" id="leadsConfirmados">0</div>
+                <div class="text-xs text-gray-500 mt-1">Conversões aprovadas</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="text-gray-600 text-sm font-medium mb-1">❌ Leads Cancelados</div>
+                <div class="text-3xl font-bold text-red-600" id="leadsCancelados">0</div>
+                <div class="text-xs text-gray-500 mt-1">Rejeitados</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="text-gray-600 text-sm font-medium mb-1">🗑️ Leads Trash</div>
+                <div class="text-3xl font-bold text-orange-600" id="leadsTrash">0</div>
+                <div class="text-xs text-gray-500 mt-1">Marcados como lixo</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="text-gray-600 text-sm font-medium mb-1">💰 Valor Total</div>
+                <div class="text-3xl font-bold text-green-600" id="totalPayout">$0.00</div>
+                <div class="text-xs text-gray-500 mt-1" id="lastUpdate">--:--:--</div>
+            </div>
+        </div>
+
+        <!-- Visualização Hierárquica Estilo Facebook -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden mb-6">
+            <!-- Tabs de Navegação -->
+            <div class="border-b border-gray-200">
+                <div class="flex items-center px-6">
+                    <!-- Tab Campanhas -->
+                    <button id="tabCampanhas" class="tab-button active px-4 py-3 flex items-center gap-2 border-b-2 border-blue-500 text-blue-600 font-medium">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                        </svg>
+                        <span>Campanhas</span>
+                        <span id="badgeCampanhas" class="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold">0</span>
+                    </button>
+                    
+                    <!-- Tab Conjuntos -->
+                    <button id="tabConjuntos" class="tab-button px-4 py-3 flex items-center gap-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800 font-medium">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                        </svg>
+                        <span id="tabConjuntosText">Conjuntos de anúncios</span>
+                        <span id="badgeConjuntos" class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-semibold hidden">0</span>
+                    </button>
+                    
+                    <!-- Tab Anúncios -->
+                    <button id="tabAnuncios" class="tab-button px-4 py-3 flex items-center gap-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800 font-medium">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
+                        </svg>
+                        <span id="tabAnunciosText">Anúncios</span>
+                        <span id="badgeAnuncios" class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-semibold hidden">0</span>
+                    </button>
+                    
+                    <!-- Tab Extrato -->
+                    <button id="tabExtrato" class="tab-button px-4 py-3 flex items-center gap-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800 font-medium">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <span>Extrato</span>
+                        <span id="badgeExtrato" class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-semibold">0</span>
+                    </button>
+                    
+                    <!-- Tab Extrato Completo -->
+                    <button id="tabExtratoCompleto" class="tab-button px-4 py-3 flex items-center gap-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800 font-medium">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <span>Extrato Completo</span>
+                        <span id="badgeExtratoCompleto" class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-semibold">0</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Barra de Ações -->
+            <div class="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                <button id="btnSelectAll" class="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 rounded transition-colors">
+                    Selecionar tudo
+                </button>
+                <button id="btnDeselectAll" class="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 rounded transition-colors">
+                    Desmarcar tudo
+                </button>
+                <div class="flex-1"></div>
+                <div id="selectedCount" class="text-sm text-gray-600">
+                    <span id="selectedCountText">0 selecionado</span>
+                </div>
+            </div>
+            
+            <!-- Conteúdo das Tabs -->
+            <div class="p-6">
+                <!-- Tab Campanhas -->
+                <div id="contentCampanhas" class="tab-content">
+                    <div id="campanhasList" class="space-y-2">
+                        <div class="text-center text-gray-500 py-8">
+                            <p>Carregando campanhas...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab Conjuntos -->
+                <div id="contentConjuntos" class="tab-content hidden">
+                    <div id="conjuntosList" class="space-y-2">
+                        <div class="text-center text-gray-500 py-8">
+                            <p>Selecione uma campanha para ver os conjuntos</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab Anúncios -->
+                <div id="contentAnuncios" class="tab-content hidden">
+                    <div id="anunciosList" class="space-y-2">
+                        <div class="text-center text-gray-500 py-8">
+                            <p>Selecione um conjunto para ver os anúncios</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab Extrato -->
+                <div id="contentExtrato" class="tab-content hidden">
+                    <div class="p-6">
+                        <div class="mb-4 flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-800">Extrato de Postbacks</h3>
+                            <div class="flex items-center gap-4">
+                                <button id="btnAgruparPorSub1" class="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm font-medium flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                                    </svg>
+                                    Agrupar por Conta (Sub1)
+                                </button>
+                                <button id="btnVerTodosExtrato" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium">
+                                    Ver Todos os Postbacks
+                                </button>
+                                <div class="text-sm text-gray-600">
+                                    Total: <span id="extratoTotal" class="font-semibold">0</span> registros
+                                </div>
+                            </div>
+                        </div>
+                        <div id="extratoAgrupadoPorSub1" class="hidden space-y-6 mb-6"></div>
+                        <div id="extratoTabelaNormal" class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data/Hora</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campanha</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conjunto</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Anúncio</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Offer ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payout</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub IDs</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="extratoTable" class="bg-white divide-y divide-gray-200">
+                                    <tr>
+                                        <td colspan="10" class="px-6 py-8 text-center text-gray-500">
+                                            <div class="flex flex-col items-center">
+                                                <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                </svg>
+                                                <p>Carregando extrato...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab Extrato Completo -->
+                <div id="contentExtratoCompleto" class="tab-content hidden">
+                    <div class="p-6">
+                        <div class="mb-4 flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-800">Extrato Completo - Todos os Dias</h3>
+                            <div class="flex items-center gap-4">
+                                <button id="btnAgruparPorSub1Completo" class="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm font-medium flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                                    </svg>
+                                    Agrupar por Conta (Sub1)
+                                </button>
+                                <div class="text-sm text-gray-600">
+                                    Total: <span id="extratoCompletoTotal" class="font-semibold">0</span> registros
+                                </div>
+                            </div>
+                        </div>
+                        <div id="extratoCompletoAgrupadoPorSub1" class="hidden space-y-6 mb-6"></div>
+                        <div id="extratoCompletoTabelaNormal" class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data/Hora</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campanha</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conjunto</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Anúncio</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Offer ID</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payout</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub IDs</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="extratoCompletoTable" class="bg-white divide-y divide-gray-200">
+                                    <tr>
+                                        <td colspan="11" class="px-6 py-8 text-center text-gray-500">
+                                            <div class="flex flex-col items-center">
+                                                <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                </svg>
+                                                <p>Carregando extrato completo...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabela de conversões -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-gray-800">Conversões</h2>
+                <div id="filterInfo" class="text-sm text-gray-600"></div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campanha</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conjunto</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Anúncio</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
+                        </tr>
+                    </thead>
+                    <tbody id="conversionsTable" class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                                <div class="flex flex-col items-center">
+                                    <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                    <p>Carregando dados...</p>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-6 text-center text-gray-500 text-sm">
+            <p>Atualização automática a cada 10 segundos</p>
+        </div>
+    </div>
+
+    <script>
+        let lastCount = 0;
+        let isFirstLoad = true;
+        let selectedDate = null;
+        let selectedStartDate = null;
+        let selectedEndDate = null;
+        let currentMonth = new Date().getMonth();
+        let currentYear = new Date().getFullYear();
+        let datesWithConversions = {}; // { "YYYY-MM-DD": { count, conversoes, leads, total_payout } }
+        let dateRangeStart = null;
+        let dateRangeEnd = null;
+        let produtoSelecionado = null; // Produto selecionado para filtro
+        let produtosData = []; // Lista de produtos cadastrados
+
+        // Função para formatar data (sem problemas de fuso horário)
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            
+            // Se já está no formato YYYY-MM-DD, converter diretamente
+            if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateString)) {
+                const [year, month, day] = dateString.split('T')[0].split('-');
+                return `${day}/${month}/${year}`;
+            }
+            
+            // Para outros formatos, usar Date mas ajustar para evitar problema de fuso horário
+            const date = new Date(dateString);
+            // Usar métodos locais para garantir data correta
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        }
+
+        // Função para formatar hora (fuso horário Brasil)
+        function formatTime(dateString) {
+            if (!dateString) return 'N/A';
+            try {
+                // Se já está no formato YYYY-MM-DD HH:MM:SS (SQL do Brasil), extrair e formatar diretamente
+                if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(dateString)) {
+                    // Extrair apenas a parte do horário (HH:MM:SS)
+                    const timePart = dateString.split(' ')[1];
+                    let [hours, minutes, seconds] = timePart.split(':');
+                    
+                    // Validar e corrigir horários inválidos (24:xx ou maior)
+                    hours = parseInt(hours, 10);
+                    if (hours >= 24) {
+                        // Converter 24:xx para 00:xx (meia-noite do dia seguinte)
+                        hours = hours - 24;
+                        hours = String(hours).padStart(2, '0');
+                    } else {
+                        hours = String(hours).padStart(2, '0');
+                    }
+                    
+                    // Validar minutos e segundos
+                    minutes = parseInt(minutes, 10);
+                    if (minutes >= 60) {
+                        minutes = minutes - 60;
+                        hours = String(parseInt(hours, 10) + 1).padStart(2, '0');
+                    }
+                    minutes = String(minutes).padStart(2, '0');
+                    
+                    seconds = parseInt(seconds, 10);
+                    if (seconds >= 60) {
+                        seconds = seconds - 60;
+                        minutes = String(parseInt(minutes, 10) + 1).padStart(2, '0');
+                    }
+                    seconds = String(seconds).padStart(2, '0');
+                    
+                    // Retornar no formato HH:MM:SS (já está no horário do Brasil)
+                    return `${hours}:${minutes}:${seconds}`;
+                }
+                // Para outros formatos (ISO, etc), converter para horário do Brasil
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) {
+                    return 'N/A';
+                }
+                const formatter = new Intl.DateTimeFormat('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+                return formatter.format(date);
+            } catch (error) {
+                console.error('Erro ao formatar hora:', error);
+                return 'N/A';
+            }
+        }
+        
+        // Função para obter hora atual do Brasil
+        function getBrazilTime() {
+            return new Date().toLocaleTimeString('pt-BR', {timeZone: 'America/Sao_Paulo'});
+        }
+
+        // Função para formatar valor monetário em dólar (USD)
+        function formatCurrencyUSD(value) {
+            if (!value || value === 0) return '$0.00';
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        }
+
+        // Função para obter badge de status
+        function getStatusBadge(status) {
+            const badges = {
+                'FTD': 'bg-green-100 text-green-800',
+                'DEPOSIT': 'bg-blue-100 text-blue-800',
+                'PENDING': 'bg-yellow-100 text-yellow-800',
+                'REJECTED': 'bg-red-100 text-red-800'
+            };
+            const color = badges[status] || 'bg-gray-100 text-gray-800';
+            return `<span class="px-2 py-1 rounded-full text-xs font-semibold ${color}">${status || 'N/A'}</span>`;
+        }
+
+        // Função para obter nome do mês em português
+        function getMonthName(month) {
+            const months = [
+                'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+            ];
+            return months[month];
+        }
+
+        // Função para formatar data como YYYY-MM-DD
+        function formatDateISO(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // Função para verificar se uma data é hoje
+        function isToday(date) {
+            const today = new Date();
+            return date.getDate() === today.getDate() &&
+                   date.getMonth() === today.getMonth() &&
+                   date.getFullYear() === today.getFullYear();
+        }
+
+        // Função para renderizar o calendário
+        function renderCalendar() {
+            const calendar = document.getElementById('calendar');
+            const monthName = document.getElementById('currentMonth');
+            
+            // Atualizar nome do mês
+            monthName.textContent = `${getMonthName(currentMonth)} ${currentYear}`;
+
+            // Limpar calendário (manter cabeçalhos)
+            const daysContainer = Array.from(calendar.children).slice(7);
+            daysContainer.forEach(day => day.remove());
+
+            // Primeiro dia do mês
+            const firstDay = new Date(currentYear, currentMonth, 1);
+            const lastDay = new Date(currentYear, currentMonth + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            const startingDayOfWeek = firstDay.getDay();
+
+            // Adicionar células vazias para os dias antes do primeiro dia do mês
+            for (let i = 0; i < startingDayOfWeek; i++) {
+                const emptyDay = document.createElement('div');
+                emptyDay.className = 'py-1 text-center text-gray-300 text-xs';
+                calendar.appendChild(emptyDay);
+            }
+
+            // Adicionar os dias do mês
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(currentYear, currentMonth, day);
+                const dateISO = formatDateISO(date);
+                const dayElement = document.createElement('div');
+                
+                dayElement.className = 'calendar-day py-1 text-center cursor-pointer rounded transition-all text-xs';
+                
+                // Verificar se tem conversões neste dia
+                const dayData = datesWithConversions[dateISO];
+                if (dayData) {
+                    dayElement.classList.add('has-conversions');
+                    dayElement.title = `${dayData.count} conversões - ${formatCurrencyUSD(dayData.total_payout)}`;
+                }
+
+                // Verificar se é hoje
+                if (isToday(date)) {
+                    dayElement.classList.add('today');
+                }
+
+                // Verificar se está no intervalo selecionado
+                if (dateRangeStart && dateRangeEnd) {
+                    if (dateISO >= dateRangeStart && dateISO <= dateRangeEnd) {
+                        dayElement.classList.add('selected');
+                    }
+                } else if (selectedDate === dateISO) {
+                    dayElement.classList.add('selected');
+                }
+
+                dayElement.textContent = day;
+                dayElement.addEventListener('click', () => {
+                    // Se não há data inicial, definir como início
+                    if (!dateRangeStart) {
+                        dateRangeStart = dateISO;
+                        dateRangeEnd = null;
+                        document.getElementById('startDate').value = dateISO;
+                        document.getElementById('endDate').value = '';
+                        renderCalendar();
+                    } 
+                    // Se há início mas não fim, definir como fim
+                    else if (!dateRangeEnd) {
+                        if (dateISO < dateRangeStart) {
+                            // Se clicou em data anterior, trocar
+                            dateRangeEnd = dateRangeStart;
+                            dateRangeStart = dateISO;
+                        } else {
+                            dateRangeEnd = dateISO;
+                        }
+                        document.getElementById('startDate').value = dateRangeStart;
+                        document.getElementById('endDate').value = dateRangeEnd;
+                        renderCalendar();
+                    } 
+                    // Se já tem início e fim, resetar e começar novo intervalo
+                    else {
+                        dateRangeStart = dateISO;
+                        dateRangeEnd = null;
+                        document.getElementById('startDate').value = dateISO;
+                        document.getElementById('endDate').value = '';
+                        renderCalendar();
+                    }
+                });
+                
+                calendar.appendChild(dayElement);
+            }
+        }
+
+        // Função para aplicar opção rápida de data
+        function applyQuickDate(option) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            let start, end;
+            
+            switch(option) {
+                case 'today':
+                    start = end = formatDateISO(today);
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(today);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    start = end = formatDateISO(yesterday);
+                    break;
+                case 'last7days':
+                    end = formatDateISO(today);
+                    const last7 = new Date(today);
+                    last7.setDate(last7.getDate() - 6);
+                    start = formatDateISO(last7);
+                    break;
+                case 'last14days':
+                    end = formatDateISO(today);
+                    const last14 = new Date(today);
+                    last14.setDate(last14.getDate() - 13);
+                    start = formatDateISO(last14);
+                    break;
+                case 'last30days':
+                    end = formatDateISO(today);
+                    const last30 = new Date(today);
+                    last30.setDate(last30.getDate() - 29);
+                    start = formatDateISO(last30);
+                    break;
+                case 'thisWeek':
+                    const weekStart = new Date(today);
+                    weekStart.setDate(today.getDate() - today.getDay());
+                    start = formatDateISO(weekStart);
+                    end = formatDateISO(today);
+                    break;
+                case 'lastWeek':
+                    const lastWeekEnd = new Date(today);
+                    lastWeekEnd.setDate(today.getDate() - today.getDay() - 1);
+                    const lastWeekStart = new Date(lastWeekEnd);
+                    lastWeekStart.setDate(lastWeekEnd.getDate() - 6);
+                    start = formatDateISO(lastWeekStart);
+                    end = formatDateISO(lastWeekEnd);
+                    break;
+                case 'thisMonth':
+                    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                    start = formatDateISO(monthStart);
+                    end = formatDateISO(today);
+                    break;
+                case 'lastMonth':
+                    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+                    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                    start = formatDateISO(lastMonthStart);
+                    end = formatDateISO(lastMonthEnd);
+                    break;
+                default:
+                    return;
+            }
+            
+            dateRangeStart = start;
+            dateRangeEnd = end;
+            document.getElementById('startDate').value = start;
+            document.getElementById('endDate').value = end;
+            
+            // Atualizar mês do calendário para mostrar a data inicial
+            const startDateObj = new Date(start);
+            currentMonth = startDateObj.getMonth();
+            currentYear = startDateObj.getFullYear();
+            
+            renderCalendar();
+        }
+
+        // Função para carregar datas com conversões
+        async function loadDatesWithConversions() {
+            try {
+                const response = await fetch('/api/conversions/dates');
+                const data = await response.json();
+                
+                // Converter array em objeto para acesso rápido
+                datesWithConversions = {};
+                data.forEach(item => {
+                    datesWithConversions[item.date] = {
+                        count: item.count,
+                        leads: item.leads,
+                        conversoes: item.conversoes,
+                        total_payout: item.total_payout
+                    };
+                });
+                
+                renderCalendar();
+            } catch (error) {
+                console.error('Erro ao carregar datas:', error);
+            }
+        }
+
+        // Função para carregar estatísticas
+        async function loadStats() {
+            try {
+                let url = '/api/stats';
+                const params = [];
+                
+                // Filtro por produto (prioridade)
+                if (produtoSelecionado) {
+                    params.push(`offerId=${produtoSelecionado.offerId}`);
+                }
+                
+                // Filtro por data
+                if (selectedStartDate && selectedEndDate) {
+                    params.push(`startDate=${selectedStartDate}`, `endDate=${selectedEndDate}`);
+                } else if (selectedDate) {
+                    params.push(`date=${selectedDate}`);
+                }
+                
+                if (params.length > 0) {
+                    url += '?' + params.join('&');
+                }
+                
+                const response = await fetch(url);
+                let stats = await response.json();
+                
+                // Se houver filtro de hierarquia, calcular estatísticas dos itens selecionados
+                if (selectedAnuncios.size > 0 || selectedConjuntos.size > 0 || selectedCampanhas.size > 0) {
+                    // Buscar conversões e calcular estatísticas
+                    const conversionsResponse = await fetch(url.replace('/api/stats', '/api/conversions'));
+                    let conversions = await conversionsResponse.json();
+                    
+                    // Aplicar mesmo filtro de hierarquia
+                    if (selectedAnuncios.size > 0) {
+                        conversions = conversions.filter(item => {
+                            const key = `${item.campanha || 'N/A'}::${item.conjunto || 'N/A'}::${item.anuncio || 'N/A'}`;
+                            return selectedAnuncios.has(key);
+                        });
+                    } else if (selectedConjuntos.size > 0) {
+                        conversions = conversions.filter(item => {
+                            const key = `${item.campanha || 'N/A'}::${item.conjunto || 'N/A'}`;
+                            return selectedConjuntos.has(key);
+                        });
+                    } else if (selectedCampanhas.size > 0) {
+                        conversions = conversions.filter(item => {
+                            return selectedCampanhas.has(item.campanha || 'N/A');
+                        });
+                    }
+                    
+                    // Contar leads únicos usando a mesma lógica da API /api/stats
+                    // Criar um Map para agrupar por unique_id e pegar apenas o registro mais recente de cada lead
+                    const uniqueLeadsMap = new Map();
+                    
+                    conversions.forEach(item => {
+                        // Gerar unique_id: usar lead_id se disponível, senão criar baseado no id
+                        const uniqueId = item.lead_id || (`unique_${item.id}`);
+                        
+                        // Se não existe no mapa ou se este registro é mais recente, adicionar/atualizar
+                        if (!uniqueLeadsMap.has(uniqueId)) {
+                            uniqueLeadsMap.set(uniqueId, item);
+                        } else {
+                            const existing = uniqueLeadsMap.get(uniqueId);
+                            // Comparar created_at para pegar o mais recente
+                            const existingDate = new Date(existing.created_at || 0);
+                            const currentDate = new Date(item.created_at || 0);
+                            if (currentDate > existingDate) {
+                                uniqueLeadsMap.set(uniqueId, item);
+                            }
+                        }
+                    });
+                    
+                    // Converter Map para array de leads únicos (apenas o registro mais recente de cada)
+                    const uniqueLeads = Array.from(uniqueLeadsMap.values());
+                    
+                    // Recalcular estatísticas baseado em leads únicos
+                    // IMPORTANTE: total_payout conta APENAS leads aprovados (conversao/approval)
+                    stats = {
+                        total_leads: uniqueLeads.length,
+                        leads: uniqueLeads.filter(c => c.notification_type === 'lead').length,
+                        leads_confirmados: uniqueLeads.filter(c => c.notification_type === 'conversao' || c.notification_type === 'approval').length,
+                        leads_cancelados: uniqueLeads.filter(c => c.notification_type === 'cancel' || c.notification_type === 'rejection').length,
+                        leads_trash: uniqueLeads.filter(c => c.notification_type === 'trash').length,
+                        total_payout: uniqueLeads
+                            .filter(c => c.notification_type === 'conversao' || c.notification_type === 'approval')
+                            .reduce((sum, c) => sum + (parseFloat(c.payout) || 0), 0)
+                    };
+                }
+                
+                document.getElementById('totalLeads').textContent = stats.total_leads || 0;
+                document.getElementById('leadsConfirmados').textContent = stats.leads_confirmados || 0;
+                document.getElementById('leadsCancelados').textContent = stats.leads_cancelados || 0;
+                document.getElementById('leadsTrash').textContent = stats.leads_trash || 0;
+                document.getElementById('totalPayout').textContent = formatCurrencyUSD(stats.total_payout || 0);
+            } catch (error) {
+                console.error('Erro ao carregar estatísticas:', error);
+            }
+        }
+
+        // Função para carregar conversões
+        async function loadConversions() {
+            try {
+                let url = '/api/conversions';
+                const params = [];
+                
+                // Filtro por produto (prioridade)
+                if (produtoSelecionado) {
+                    params.push(`offerId=${produtoSelecionado.offerId}`);
+                }
+                
+                // Filtro de data
+                if (selectedStartDate && selectedEndDate) {
+                    params.push(`startDate=${selectedStartDate}`, `endDate=${selectedEndDate}`);
+                } else if (selectedDate) {
+                    params.push(`date=${selectedDate}`);
+                }
+                
+                if (params.length > 0) {
+                    url += '?' + params.join('&');
+                }
+                
+                const response = await fetch(url);
+                let data = await response.json();
+                
+                // Filtrar por hierarquia selecionada
+                if (selectedAnuncios.size > 0) {
+                    // Filtrar por anúncios selecionados
+                    data = data.filter(item => {
+                        const key = `${item.campanha || 'N/A'}::${item.conjunto || 'N/A'}::${item.anuncio || 'N/A'}`;
+                        return selectedAnuncios.has(key);
+                    });
+                } else if (selectedConjuntos.size > 0) {
+                    // Filtrar por conjuntos selecionados
+                    data = data.filter(item => {
+                        const key = `${item.campanha || 'N/A'}::${item.conjunto || 'N/A'}`;
+                        return selectedConjuntos.has(key);
+                    });
+                } else if (selectedCampanhas.size > 0) {
+                    // Filtrar por campanhas selecionadas
+                    data = data.filter(item => {
+                        return selectedCampanhas.has(item.campanha || 'N/A');
+                    });
+                }
+
+                // Verificar se há novos dados (apenas se não houver filtro)
+                if (!selectedDate && !selectedStartDate && !isFirstLoad && data.length > lastCount) {
+                    showAlert();
+                }
+                lastCount = data.length;
+                isFirstLoad = false;
+
+                // Atualizar tabela
+                updateTable(data);
+
+                // Atualizar timestamp
+                document.getElementById('lastUpdate').textContent = getBrazilTime();
+
+                // Atualizar informação de filtro
+                updateFilterInfo();
+            } catch (error) {
+                console.error('Erro ao carregar conversões:', error);
+            }
+        }
+
+        // Função para atualizar informação do filtro
+        function updateFilterInfo() {
+            const filterInfo = document.getElementById('filterInfo');
+            const selectedPeriodText = document.getElementById('selectedPeriodText');
+            const datePickerText = document.getElementById('datePickerText');
+            const currentDateDisplay = document.getElementById('currentDateDisplay');
+            
+            // Verificar se os elementos existem antes de usar
+            if (!filterInfo || !selectedPeriodText || !datePickerText) {
+                return; // Elementos não encontrados, sair da função
+            }
+            
+            let filterParts = [];
+            
+            // Filtro de data
+            if (selectedStartDate && selectedEndDate) {
+                if (selectedStartDate === selectedEndDate) {
+                    filterParts.push(`Data: ${formatDate(selectedStartDate)}`);
+                } else {
+                    filterParts.push(`Data: ${formatDate(selectedStartDate)} até ${formatDate(selectedEndDate)}`);
+                }
+            } else if (selectedDate) {
+                filterParts.push(`Data: ${formatDate(selectedDate)}`);
+            }
+            
+            // Filtro de hierarquia
+            if (selectedAnuncios && selectedAnuncios.size > 0) {
+                filterParts.push(`${selectedAnuncios.size} anúncio${selectedAnuncios.size > 1 ? 's' : ''} selecionado${selectedAnuncios.size > 1 ? 's' : ''}`);
+            } else if (selectedConjuntos && selectedConjuntos.size > 0) {
+                filterParts.push(`${selectedConjuntos.size} conjunto${selectedConjuntos.size > 1 ? 's' : ''} selecionado${selectedConjuntos.size > 1 ? 's' : ''}`);
+            } else if (selectedCampanhas && selectedCampanhas.size > 0) {
+                filterParts.push(`${selectedCampanhas.size} campanha${selectedCampanhas.size > 1 ? 's' : ''} selecionada${selectedCampanhas.size > 1 ? 's' : ''}`);
+            }
+            
+            const filterText = filterParts.length > 0 ? filterParts.join(' • ') : 'Mostrando todas as conversões';
+            filterInfo.textContent = filterText;
+            selectedPeriodText.textContent = filterText;
+            
+            // Atualizar date picker
+            if (selectedStartDate && selectedEndDate) {
+                if (selectedStartDate === selectedEndDate) {
+                    datePickerText.textContent = formatDate(selectedStartDate);
+                } else {
+                    datePickerText.textContent = `${formatDate(selectedStartDate)} - ${formatDate(selectedEndDate)}`;
+                }
+            } else if (selectedDate) {
+                datePickerText.textContent = formatDate(selectedDate);
+            } else {
+                const today = new Date();
+                if (currentDateDisplay) {
+                    currentDateDisplay.textContent = formatDate(formatDateISO(today));
+                }
+                datePickerText.textContent = `Hoje: ${formatDate(formatDateISO(today))}`;
+            }
+        }
+
+
+        // Função para atualizar tabela
+        function updateTable(data) {
+            const tbody = document.getElementById('conversionsTable');
+            
+            if (data.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                            <div class="flex flex-col items-center">
+                                <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                                </svg>
+                                <p>Nenhuma conversão encontrada</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = data.map(item => {
+                // Hierarquia: Campanha (Nível 1) > Conjunto (Nível 2) > Anúncio (Nível 3)
+                // Prioridade: campos mapeados > sub_ids hierárquicos
+                const campanha = item.campanha || item.sub_id6 || item.sub_id3 || 'N/A';
+                const conjunto = item.conjunto || item.sub_id5 || 'N/A';
+                const anuncio = item.anuncio || item.sub_id4 || 'N/A';
+                
+                // Badge de tipo de notificação
+                const notificationType = item.notification_type || 'lead';
+                const typeBadge = {
+                    'lead': '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">Lead</span>',
+                    'conversao': '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Confirmado</span>',
+                    'approval': '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Confirmado</span>',
+                    'cancel': '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">Cancelado</span>',
+                    'rejection': '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">Cancelado</span>',
+                    'trash': '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">Trash</span>'
+                };
+                const typeDisplay = typeBadge[notificationType] || typeBadge['lead'];
+                
+                return `
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <div class="font-semibold text-gray-900">${campanha}</div>
+                        <div class="text-xs text-gray-500 mt-1">📊 Campanha</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <div class="text-gray-900">${conjunto}</div>
+                        <div class="text-xs text-gray-500 mt-1">📁 Conjunto</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <div class="text-gray-900">${anuncio}</div>
+                        <div class="text-xs text-gray-500 mt-1">📄 Anúncio</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <div class="mb-1">${typeDisplay}</div>
+                        <div>${getStatusBadge(item.status)}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">${formatCurrencyUSD(item.payout)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatDate(item.date || item.created_at)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatTime(item.created_at)}</td>
+                </tr>
+            `;
+            }).join('');
+        }
+
+        // Função para mostrar alerta
+        function showAlert() {
+            const alert = document.getElementById('alert');
+            alert.classList.remove('hidden');
+            alert.classList.add('slide-down', 'pulse-green');
+            
+            // Atualizar extrato se estiver na aba de extrato
+            if (currentTab === 'extrato') {
+                loadExtrato();
+            }
+            
+            setTimeout(() => {
+                alert.classList.add('hidden');
+                alert.classList.remove('pulse-green');
+            }, 5000);
+        }
+
+        // Event Listeners
+        // Abrir modal de date picker
+        document.getElementById('datePickerBtn').addEventListener('click', () => {
+            document.getElementById('datePickerModal').classList.remove('hidden');
+            // Resetar seleção ao abrir
+            dateRangeStart = selectedStartDate;
+            dateRangeEnd = selectedEndDate;
+            if (selectedStartDate) {
+                document.getElementById('startDate').value = selectedStartDate;
+                // Mostrar mês da data inicial
+                const startDateObj = new Date(selectedStartDate);
+                currentMonth = startDateObj.getMonth();
+                currentYear = startDateObj.getFullYear();
+            } else {
+                // Mostrar mês atual
+                const today = new Date();
+                currentMonth = today.getMonth();
+                currentYear = today.getFullYear();
+            }
+            if (selectedEndDate) {
+                document.getElementById('endDate').value = selectedEndDate;
+            }
+            renderCalendar();
+        });
+
+        // Fechar modal
+        document.getElementById('closeDatePicker').addEventListener('click', () => {
+            document.getElementById('datePickerModal').classList.add('hidden');
+        });
+
+        document.getElementById('cancelDatePicker').addEventListener('click', () => {
+            document.getElementById('datePickerModal').classList.add('hidden');
+            // Restaurar valores anteriores
+            dateRangeStart = selectedStartDate;
+            dateRangeEnd = selectedEndDate;
+        });
+
+        // Aplicar filtro de data
+        document.getElementById('applyDatePicker').addEventListener('click', () => {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            if (startDate && endDate) {
+                selectedStartDate = startDate;
+                selectedEndDate = endDate;
+                selectedDate = null;
+            } else if (startDate) {
+                selectedDate = startDate;
+                selectedStartDate = null;
+                selectedEndDate = null;
+            } else {
+                selectedDate = null;
+                selectedStartDate = null;
+                selectedEndDate = null;
+            }
+            
+            document.getElementById('datePickerModal').classList.add('hidden');
+            loadHierarchy();
+            loadConversions();
+            loadStats();
+            if (currentTab === 'extrato') {
+                loadExtrato();
+            }
+            updateFilterInfo();
+        });
+
+        // Opções rápidas
+        document.querySelectorAll('input[name="quickDate"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    applyQuickDate(e.target.value);
+                }
+            });
+        });
+
+        // Campos de data
+        document.getElementById('startDate').addEventListener('change', (e) => {
+            dateRangeStart = e.target.value;
+            if (dateRangeStart && dateRangeEnd && dateRangeStart > dateRangeEnd) {
+                dateRangeEnd = dateRangeStart;
+                document.getElementById('endDate').value = dateRangeEnd;
+            }
+            renderCalendar();
+        });
+
+        document.getElementById('endDate').addEventListener('change', (e) => {
+            dateRangeEnd = e.target.value;
+            if (dateRangeStart && dateRangeEnd && dateRangeStart > dateRangeEnd) {
+                dateRangeStart = dateRangeEnd;
+                document.getElementById('startDate').value = dateRangeStart;
+            }
+            renderCalendar();
+        });
+
+        // Navegação do calendário
+        document.getElementById('prevMonth').addEventListener('click', () => {
+            currentMonth--;
+            if (currentMonth < 0) {
+                currentMonth = 11;
+                currentYear--;
+            }
+            renderCalendar();
+        });
+
+        document.getElementById('nextMonth').addEventListener('click', () => {
+            currentMonth++;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
+            renderCalendar();
+        });
+
+        // Botão para resetar filtro
+        document.getElementById('resetFilter').addEventListener('click', () => {
+            selectedDate = null;
+            selectedStartDate = null;
+            selectedEndDate = null;
+            dateRangeStart = null;
+            dateRangeEnd = null;
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            document.querySelectorAll('input[name="quickDate"]').forEach(radio => radio.checked = false);
+            renderCalendar();
+            loadHierarchy();
+            loadConversions();
+            loadStats();
+            if (currentTab === 'extrato') {
+                loadExtrato();
+            }
+            updateFilterInfo();
+        });
+
+        // Fechar modal ao clicar fora
+        document.getElementById('datePickerModal').addEventListener('click', (e) => {
+            if (e.target.id === 'datePickerModal') {
+                document.getElementById('datePickerModal').classList.add('hidden');
+            }
+        });
+
+        // ============================================
+        // GERENCIAMENTO DE HIERARQUIA (Estilo Facebook)
+        // ============================================
+        let hierarchyData = [];
+        let selectedCampanhas = new Set();
+        let selectedConjuntos = new Set();
+        let selectedAnuncios = new Set();
+        let currentTab = 'campanhas';
+
+        // Carregar hierarquia
+        async function loadHierarchy() {
+            try {
+                let url = '/api/hierarchy';
+                const params = [];
+                
+                // Filtro por produto (prioridade)
+                if (produtoSelecionado) {
+                    params.push(`offerId=${produtoSelecionado.offerId}`);
+                }
+                
+                // Sempre enviar data: usar data selecionada ou hoje se não houver seleção
+                // A data é baseada no POSTBACK (date/created_at), não no nome da campanha
+                const dateToUse = selectedDate || formatDateISO(new Date());
+                params.push(`date=${dateToUse}`);
+                
+                if (params.length > 0) {
+                    url += '?' + params.join('&');
+                }
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                hierarchyData = await response.json();
+                console.log('📊 Hierarquia carregada:', hierarchyData);
+                console.log('📊 Total de campanhas:', hierarchyData.length);
+                renderCampanhas();
+                updateBadges();
+                updateTabTexts();
+            } catch (error) {
+                console.error('❌ Erro ao carregar hierarquia:', error);
+                const list = document.getElementById('campanhasList');
+                if (list) {
+                    list.innerHTML = `<div class="text-center text-red-500 py-8"><p>Erro ao carregar campanhas: ${error.message}</p></div>`;
+                }
+            }
+        }
+
+        // Renderizar campanhas
+        function renderCampanhas() {
+            const list = document.getElementById('campanhasList');
+            if (!list) {
+                console.error('❌ Elemento campanhasList não encontrado');
+                return;
+            }
+            
+            if (hierarchyData.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-500 py-8"><p>Nenhuma campanha encontrada. Aguarde o recebimento de leads via postback.</p></div>';
+                return;
+            }
+
+            list.innerHTML = hierarchyData.map(campanha => {
+                const isSelected = selectedCampanhas.has(campanha.nome);
+                // Normalizar nome: se for "sem-trackeamento", mostrar "untracked"
+                const nomeExibido = campanha.nome === 'sem-trackeamento' || campanha.nome === 'Sem Campanha' 
+                    ? 'untracked' 
+                    : campanha.nome;
+                
+                // Coletar todos os conjuntos e anúncios para exibir
+                const todosConjuntos = [];
+                const todosAnuncios = [];
+                campanha.conjuntos.forEach(conjunto => {
+                    const conjuntoNome = conjunto.nome === 'sem-trackeamento' ? 'untracked' : conjunto.nome;
+                    todosConjuntos.push(conjuntoNome);
+                    conjunto.anuncios.forEach(anuncio => {
+                        const anuncioNome = anuncio.nome === 'sem-trackeamento' ? 'untracked' : anuncio.nome;
+                        todosAnuncios.push(`${conjuntoNome} > ${anuncioNome}`);
+                    });
+                });
+                
+                // Se não tiver conjuntos, mostrar apenas campanha
+                const conjuntosTexto = todosConjuntos.length > 0 
+                    ? todosConjuntos.join(', ') 
+                    : 'untracked';
+                const anunciosTexto = todosAnuncios.length > 0 
+                    ? todosAnuncios.join(' | ') 
+                    : 'untracked';
+                
+                return `
+                    <div class="hierarchy-item ${isSelected ? 'selected' : ''} border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-50" data-campanha="${campanha.nome}">
+                        <div class="flex items-start gap-3">
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 rounded mt-1" ${isSelected ? 'checked' : ''} 
+                                   onchange="toggleCampanha('${campanha.nome.replace(/'/g, "\\'")}', this.checked)">
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-900 text-lg mb-2">📊 ${nomeExibido}</div>
+                                
+                                <div class="bg-gray-50 rounded-lg p-3 mb-2">
+                                    <div class="text-sm text-gray-700 mb-1">
+                                        <span class="font-medium">Conjunto:</span> 
+                                        <span class="text-gray-600">${conjuntosTexto}</span>
+                                    </div>
+                                    <div class="text-sm text-gray-700">
+                                        <span class="font-medium">Anúncio:</span> 
+                                        <span class="text-gray-600">${anunciosTexto}</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex flex-wrap gap-4 text-sm">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-gray-600">📈 Leads:</span>
+                                        <span class="font-semibold text-blue-600">${campanha.leads}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-gray-600">✅ Conversões:</span>
+                                        <span class="font-semibold text-green-600">${campanha.conversoes}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-gray-600">💰 Valor:</span>
+                                        <span class="font-semibold text-green-600">${formatCurrencyUSD(campanha.total_payout)}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-gray-600">📁 Conjuntos:</span>
+                                        <span class="font-semibold">${campanha.conjuntos.length}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            ${campanha.conjuntos.length > 0 ? `
+                            <button onclick="viewConjuntos('${campanha.nome.replace(/'/g, "\\'")}')" class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm whitespace-nowrap">
+                                Ver Conjuntos →
+                            </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Renderizar conjuntos
+        function renderConjuntos() {
+            const list = document.getElementById('conjuntosList');
+            const campanhasSelecionadas = hierarchyData.filter(c => selectedCampanhas.has(c.nome));
+            
+            if (campanhasSelecionadas.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-500 py-8"><p>Selecione uma campanha para ver os conjuntos</p></div>';
+                return;
+            }
+
+            const conjuntos = [];
+            campanhasSelecionadas.forEach(campanha => {
+                campanha.conjuntos.forEach(conjunto => {
+                    conjuntos.push({...conjunto, campanha: campanha.nome});
+                });
+            });
+
+            if (conjuntos.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-500 py-8"><p>Nenhum conjunto encontrado nas campanhas selecionadas</p></div>';
+                return;
+            }
+
+            list.innerHTML = conjuntos.map(conjunto => {
+                const key = `${conjunto.campanha}::${conjunto.nome}`;
+                const isSelected = selectedConjuntos.has(key);
+                return `
+                    <div class="hierarchy-item ${isSelected ? 'selected' : ''} border border-gray-200 rounded-lg p-4 cursor-pointer" data-conjunto="${key}">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 rounded" ${isSelected ? 'checked' : ''} 
+                                   onchange="toggleConjunto('${key}', this.checked)">
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-900">${conjunto.nome}</div>
+                                <div class="text-xs text-gray-500 mt-1">Campanha: ${conjunto.campanha}</div>
+                                <div class="text-sm text-gray-500 mt-1">
+                                    ${conjunto.anuncios.length} anúncio(s) • 
+                                    ${conjunto.total} total • 
+                                    ${conjunto.conversoes} conversões • 
+                                    ${formatCurrencyUSD(conjunto.total_payout)}
+                                </div>
+                            </div>
+                            <button onclick="viewAnuncios('${key}')" class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm">
+                                Ver Anúncios →
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Renderizar anúncios
+        function renderAnuncios() {
+            const list = document.getElementById('anunciosList');
+            const conjuntosSelecionados = [];
+            
+            hierarchyData.forEach(campanha => {
+                campanha.conjuntos.forEach(conjunto => {
+                    const key = `${campanha.nome}::${conjunto.nome}`;
+                    if (selectedConjuntos.has(key)) {
+                        conjunto.anuncios.forEach(anuncio => {
+                            conjuntosSelecionados.push({...anuncio, conjunto: conjunto.nome, campanha: campanha.nome});
+                        });
+                    }
+                });
+            });
+
+            if (conjuntosSelecionados.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-500 py-8"><p>Selecione um conjunto para ver os anúncios</p></div>';
+                return;
+            }
+
+            list.innerHTML = conjuntosSelecionados.map(anuncio => {
+                const key = `${anuncio.campanha}::${anuncio.conjunto}::${anuncio.nome}`;
+                const isSelected = selectedAnuncios.has(key);
+                return `
+                    <div class="hierarchy-item ${isSelected ? 'selected' : ''} border border-gray-200 rounded-lg p-4 cursor-pointer" data-anuncio="${key}">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 rounded" ${isSelected ? 'checked' : ''} 
+                                   onchange="toggleAnuncio('${key}', this.checked)">
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-900">${anuncio.nome}</div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    Campanha: ${anuncio.campanha} • Conjunto: ${anuncio.conjunto}
+                                </div>
+                                <div class="text-sm text-gray-500 mt-1">
+                                    ${anuncio.total} total • 
+                                    ${anuncio.conversoes} conversões • 
+                                    ${formatCurrencyUSD(anuncio.total_payout)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Funções de toggle (tornar globais)
+        window.toggleCampanha = function(nome, checked) {
+            if (checked) {
+                selectedCampanhas.add(nome);
+            } else {
+                selectedCampanhas.delete(nome);
+                // Remover conjuntos e anúncios dessa campanha
+                hierarchyData.find(c => c.nome === nome)?.conjuntos.forEach(conj => {
+                    selectedConjuntos.delete(`${nome}::${conj.nome}`);
+                    conj.anuncios.forEach(anuncio => {
+                        selectedAnuncios.delete(`${nome}::${conj.nome}::${anuncio.nome}`);
+                    });
+                });
+            }
+            renderCampanhas();
+            renderConjuntos();
+            renderAnuncios();
+            updateSelectedCount();
+            updateTabTexts();
+            filterConversions();
+        };
+
+        window.toggleConjunto = function(key, checked) {
+            if (checked) {
+                selectedConjuntos.add(key);
+            } else {
+                selectedConjuntos.delete(key);
+                // Remover anúncios desse conjunto
+                const [campanha, conjunto] = key.split('::');
+                hierarchyData.find(c => c.nome === campanha)?.conjuntos
+                    .find(conj => conj.nome === conjunto)?.anuncios.forEach(anuncio => {
+                        selectedAnuncios.delete(`${campanha}::${conjunto}::${anuncio.nome}`);
+                    });
+            }
+            renderConjuntos();
+            renderAnuncios();
+            updateSelectedCount();
+            updateTabTexts();
+            filterConversions();
+        };
+
+        window.toggleAnuncio = function(key, checked) {
+            if (checked) {
+                selectedAnuncios.add(key);
+            } else {
+                selectedAnuncios.delete(key);
+            }
+            renderAnuncios();
+            updateSelectedCount();
+            updateTabTexts();
+            filterConversions();
+        };
+
+        window.viewConjuntos = function(campanhaNome) {
+            if (!selectedCampanhas.has(campanhaNome)) {
+                selectedCampanhas.add(campanhaNome);
+                renderCampanhas();
+            }
+            updateTabTexts();
+            switchTab('conjuntos');
+        };
+
+        window.viewAnuncios = function(conjuntoKey) {
+            if (!selectedConjuntos.has(conjuntoKey)) {
+                selectedConjuntos.add(conjuntoKey);
+                renderConjuntos();
+            }
+            updateTabTexts();
+            switchTab('anuncios');
+        };
+
+        // Trocar de tab
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Atualizar tabs
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active', 'border-blue-500', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-600');
+            });
+            
+            // Esconder todos os conteúdos
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            // Mostrar tab selecionada
+            if (tab === 'campanhas') {
+                document.getElementById('tabCampanhas').classList.add('active', 'border-blue-500', 'text-blue-600');
+                document.getElementById('tabCampanhas').classList.remove('border-transparent', 'text-gray-600');
+                document.getElementById('contentCampanhas').classList.remove('hidden');
+            } else if (tab === 'conjuntos') {
+                document.getElementById('tabConjuntos').classList.add('active', 'border-blue-500', 'text-blue-600');
+                document.getElementById('tabConjuntos').classList.remove('border-transparent', 'text-gray-600');
+                document.getElementById('contentConjuntos').classList.remove('hidden');
+                renderConjuntos();
+            } else if (tab === 'anuncios') {
+                document.getElementById('tabAnuncios').classList.add('active', 'border-blue-500', 'text-blue-600');
+                document.getElementById('tabAnuncios').classList.remove('border-transparent', 'text-gray-600');
+                document.getElementById('contentAnuncios').classList.remove('hidden');
+                renderAnuncios();
+            } else if (tab === 'extrato') {
+                document.getElementById('tabExtrato').classList.add('active', 'border-blue-500', 'text-blue-600');
+                document.getElementById('tabExtrato').classList.remove('border-transparent', 'text-gray-600');
+                document.getElementById('contentExtrato').classList.remove('hidden');
+                loadExtrato();
+            } else if (tab === 'extratoCompleto') {
+                document.getElementById('tabExtratoCompleto').classList.add('active', 'border-blue-500', 'text-blue-600');
+                document.getElementById('tabExtratoCompleto').classList.remove('border-transparent', 'text-gray-600');
+                document.getElementById('contentExtratoCompleto').classList.remove('hidden');
+                loadExtratoCompleto();
+            }
+        }
+
+        // Atualizar badges
+        function updateBadges() {
+            document.getElementById('badgeCampanhas').textContent = hierarchyData.length;
+            
+            const totalConjuntos = hierarchyData.reduce((sum, c) => sum + c.conjuntos.length, 0);
+            const badgeConjuntos = document.getElementById('badgeConjuntos');
+            if (totalConjuntos > 0) {
+                badgeConjuntos.textContent = totalConjuntos;
+                badgeConjuntos.classList.remove('hidden');
+            }
+            
+            const totalAnuncios = hierarchyData.reduce((sum, c) => 
+                sum + c.conjuntos.reduce((s, conj) => s + conj.anuncios.length, 0), 0);
+            const badgeAnuncios = document.getElementById('badgeAnuncios');
+            if (totalAnuncios > 0) {
+                badgeAnuncios.textContent = totalAnuncios;
+                badgeAnuncios.classList.remove('hidden');
+            }
+        }
+
+        // Atualizar contador de selecionados
+        function updateSelectedCount() {
+            const total = selectedCampanhas.size + selectedConjuntos.size + selectedAnuncios.size;
+            document.getElementById('selectedCountText').textContent = `${total} selecionado${total !== 1 ? 's' : ''}`;
+        }
+
+        // Filtrar conversões baseado na seleção
+        function filterConversions() {
+            loadConversions();
+            loadStats();
+        }
+
+        // Selecionar tudo / Desmarcar tudo
+        document.getElementById('btnSelectAll').addEventListener('click', () => {
+            if (currentTab === 'campanhas') {
+                hierarchyData.forEach(c => selectedCampanhas.add(c.nome));
+                renderCampanhas();
+            } else if (currentTab === 'conjuntos') {
+                hierarchyData.forEach(campanha => {
+                    if (selectedCampanhas.has(campanha.nome)) {
+                        campanha.conjuntos.forEach(conj => {
+                            selectedConjuntos.add(`${campanha.nome}::${conj.nome}`);
+                        });
+                    }
+                });
+                renderConjuntos();
+            } else if (currentTab === 'anuncios') {
+                hierarchyData.forEach(campanha => {
+                    campanha.conjuntos.forEach(conj => {
+                        const key = `${campanha.nome}::${conj.nome}`;
+                        if (selectedConjuntos.has(key)) {
+                            conj.anuncios.forEach(anuncio => {
+                                selectedAnuncios.add(`${campanha.nome}::${conj.nome}::${anuncio.nome}`);
+                            });
+                        }
+                    });
+                });
+                renderAnuncios();
+            }
+            updateSelectedCount();
+            filterConversions();
+        });
+
+        document.getElementById('btnDeselectAll').addEventListener('click', () => {
+            if (currentTab === 'campanhas') {
+                selectedCampanhas.clear();
+                selectedConjuntos.clear();
+                selectedAnuncios.clear();
+                renderCampanhas();
+            } else if (currentTab === 'conjuntos') {
+                selectedConjuntos.clear();
+                selectedAnuncios.clear();
+                renderConjuntos();
+            } else if (currentTab === 'anuncios') {
+                selectedAnuncios.clear();
+                renderAnuncios();
+            }
+            updateSelectedCount();
+            filterConversions();
+        });
+
+        // Função para carregar extrato de postbacks
+        let extratoData = [];
+        let extratoSemFiltros = false; // Flag para mostrar todos os postbacks sem filtros
+        
+        async function loadExtrato() {
+            try {
+                let url = '/api/extrato';
+                const params = [];
+                
+                // Se a flag extratoSemFiltros estiver ativa, não aplicar filtros
+                if (!extratoSemFiltros) {
+                    // Filtro por produto (prioridade)
+                    if (produtoSelecionado) {
+                        params.push(`offerId=${produtoSelecionado.offerId}`);
+                    }
+                    
+                    // Adicionar filtros de data se houver
+                    if (selectedDate) {
+                        params.push(`date=${selectedDate}`);
+                    } else if (selectedStartDate && selectedEndDate) {
+                        params.push(`startDate=${selectedStartDate}`, `endDate=${selectedEndDate}`);
+                    } else {
+                        // Se não houver filtro de data, usar o dia atual automaticamente
+                        const hoje = new Date();
+                        const diaAtual = formatDateISO(hoje);
+                        params.push(`date=${diaAtual}`);
+                        console.log('📅 Usando dia atual automaticamente:', diaAtual);
+                    }
+                }
+                
+                if (params.length > 0) {
+                    url += '?' + params.join('&');
+                }
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                extratoData = await response.json();
+                console.log('📋 Extrato carregado:', extratoData.length, 'registros');
+                renderExtrato();
+            } catch (error) {
+                console.error('❌ Erro ao carregar extrato:', error);
+                const table = document.getElementById('extratoTable');
+                if (table) {
+                    table.innerHTML = `<tr><td colspan="10" class="px-6 py-8 text-center text-red-500">Erro ao carregar extrato: ${error.message}</td></tr>`;
+                }
+            }
+        }
+
+        // Função para renderizar extrato
+        function renderExtrato() {
+            const table = document.getElementById('extratoTable');
+            const totalElement = document.getElementById('extratoTotal');
+            
+            if (!table) return;
+            
+            if (extratoData.length === 0) {
+                table.innerHTML = `
+                                    <tr>
+                                        <td colspan="11" class="px-6 py-8 text-center text-gray-500">
+                                            <div class="flex flex-col items-center">
+                                                <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                                </svg>
+                                                <p>Nenhum postback encontrado</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                `;
+                if (totalElement) totalElement.textContent = '0';
+                return;
+            }
+            
+            // Atualizar total e badge
+            if (totalElement) totalElement.textContent = extratoData.length;
+            const badgeExtrato = document.getElementById('badgeExtrato');
+            if (badgeExtrato) {
+                badgeExtrato.textContent = extratoData.length;
+                badgeExtrato.classList.remove('hidden');
+            }
+            
+            // Renderizar tabela
+            table.innerHTML = extratoData.map(item => {
+                const tipoClass = {
+                    'lead': 'bg-blue-100 text-blue-800',
+                    'conversao': 'bg-green-100 text-green-800',
+                    'approval': 'bg-green-100 text-green-800',
+                    'cancel': 'bg-red-100 text-red-800',
+                    'rejection': 'bg-red-100 text-red-800',
+                    'trash': 'bg-orange-100 text-orange-800'
+                }[item.notification_type] || 'bg-gray-100 text-gray-800';
+                
+                const subIds = [
+                    item.sub_id1 ? `sub1: ${item.sub_id1}` : '',
+                    item.sub_id2 ? `sub2: ${item.sub_id2}` : '',
+                    item.sub_id3 ? `sub3: ${item.sub_id3}` : '',
+                    item.sub_id4 ? `sub4: ${item.sub_id4}` : '',
+                    item.sub_id5 ? `sub5: ${item.sub_id5}` : '',
+                    item.sub_id6 ? `sub6: ${item.sub_id6}` : ''
+                ].filter(Boolean).join(', ') || 'N/A';
+                
+                const dateTime = item.created_at ? formatTime(item.created_at) : 'N/A';
+                const dateOnly = item.date || (item.created_at ? item.created_at.split(' ')[0] : 'N/A');
+                
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.id || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            <div>${dateOnly}</div>
+                            <div class="text-xs text-gray-500">${dateTime}</div>
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full ${tipoClass}">
+                                ${item.notification_type || 'N/A'}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.campanha || item.sub_id6 || item.sub_id3 || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.conjunto || item.sub_id5 || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.anuncio || item.sub_id4 || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.lead_id || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.offer_id || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.status || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-600">${item.payout ? formatCurrencyUSD(item.payout) : 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500" title="${subIds}">
+                            <div class="max-w-xs truncate">${subIds}</div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        // Função para agrupar extrato por Sub1 (Conta de anúncio)
+        let extratoAgrupadoPorSub1 = false; // Flag para controlar se está agrupado
+        
+        async function agruparExtratoPorSub1() {
+            if (extratoData.length === 0) {
+                alert('Carregue o extrato primeiro antes de agrupar por Sub1.');
+                return;
+            }
+            
+            try {
+                // Garantir que os produtos estão carregados
+                if (produtosData.length === 0) {
+                    await loadProdutos();
+                }
+            } catch (error) {
+                console.error('Erro ao carregar produtos:', error);
+            }
+            
+            try {
+                // Agrupar dados por sub_id1
+                const grupos = {};
+                extratoData.forEach(item => {
+                    const sub1 = item.sub_id1 || item.categoria || 'Sem Conta';
+                    
+                    // Tentar encontrar nome_conta através do offer_id nos produtos cadastrados
+                    let nomeConta = sub1;
+                    if (item.offer_id) {
+                        const produto = produtosData.find(p => p.offer_id === item.offer_id);
+                        if (produto && produto.nome_conta) {
+                            nomeConta = produto.nome_conta;
+                        }
+                    }
+                    
+                    // Usar sub1 como chave do grupo (agrupa os iguais)
+                    const chaveGrupo = sub1 || 'Sem Conta';
+                    
+                    if (!grupos[chaveGrupo]) {
+                        grupos[chaveGrupo] = {
+                            sub1: sub1,
+                            nomeConta: nomeConta,
+                            registros: []
+                        };
+                    }
+                    grupos[chaveGrupo].registros.push(item);
+                });
+                
+                // Ordenar grupos: primeiro os que têm produtos cadastrados, depois os outros
+                const chavesOrdenadas = Object.keys(grupos).sort((a, b) => {
+                    const aTemProduto = produtosData.some(p => {
+                        const grupo = grupos[a];
+                        return grupo && grupo.nomeConta && produtosData.some(prod => prod.nome_conta === grupo.nomeConta);
+                    });
+                    const bTemProduto = produtosData.some(p => {
+                        const grupo = grupos[b];
+                        return grupo && grupo.nomeConta && produtosData.some(prod => prod.nome_conta === grupo.nomeConta);
+                    });
+                    
+                    if (aTemProduto && !bTemProduto) return -1;
+                    if (!aTemProduto && bTemProduto) return 1;
+                    return a.localeCompare(b);
+                });
+                
+                // Renderizar grupos
+                const container = document.getElementById('extratoAgrupadoPorSub1');
+                const tabelaNormal = document.getElementById('extratoTabelaNormal');
+                
+                if (!container || !tabelaNormal) return;
+                
+                if (extratoAgrupadoPorSub1) {
+                    // Voltar ao modo normal
+                    extratoAgrupadoPorSub1 = false;
+                    container.classList.add('hidden');
+                    tabelaNormal.classList.remove('hidden');
+                    const btn = document.getElementById('btnAgruparPorSub1');
+                    if (btn) {
+                        btn.innerHTML = `
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                            </svg>
+                            Agrupar por Conta (Sub1)
+                        `;
+                    }
+                } else {
+                    // Mostrar agrupado
+                    extratoAgrupadoPorSub1 = true;
+                    container.classList.remove('hidden');
+                    tabelaNormal.classList.add('hidden');
+                    const btn = document.getElementById('btnAgruparPorSub1');
+                    if (btn) {
+                        btn.innerHTML = `
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                            </svg>
+                            Ver Tabela Normal
+                        `;
+                    }
+                    
+                    container.innerHTML = chavesOrdenadas.map(chave => {
+                        const grupo = grupos[chave];
+                        const registros = grupo.registros;
+                        const totalPayout = registros.reduce((sum, r) => sum + (parseFloat(r.payout) || 0), 0);
+                        const totalLeads = registros.length;
+                        const conversoes = registros.filter(r => r.notification_type === 'conversao' || r.notification_type === 'approval').length;
+                        const leads = registros.filter(r => r.notification_type === 'lead').length;
+                        
+                        // Verificar se é uma conta cadastrada (tem produto com esse nome_conta)
+                        const contaCadastrada = produtosData.some(p => p.nome_conta === grupo.nomeConta);
+                        
+                        return `
+                            <div class="bg-white rounded-lg shadow-md overflow-hidden border-2 ${contaCadastrada ? 'border-purple-400' : 'border-gray-300'}">
+                                <div class="bg-gradient-to-r ${contaCadastrada ? 'from-purple-500 to-purple-600' : 'from-gray-500 to-gray-600'} px-6 py-4 text-white">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <h4 class="text-lg font-bold flex items-center gap-2">
+                                                ${grupo.nomeConta || grupo.sub1 || 'Sem Conta'}
+                                                ${contaCadastrada ? '<span class="text-xs bg-white bg-opacity-30 px-2 py-1 rounded-full">Cadastrada</span>' : ''}
+                                            </h4>
+                                            <p class="text-sm ${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Sub1: ${grupo.sub1 || 'N/A'}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-sm ${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Total de Registros</div>
+                                            <div class="text-2xl font-bold">${totalLeads}</div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 grid grid-cols-4 gap-4 text-sm">
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Leads:</span>
+                                            <span class="font-semibold ml-2">${leads}</span>
+                                        </div>
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Conversões:</span>
+                                            <span class="font-semibold ml-2">${conversoes}</span>
+                                        </div>
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Valor Total:</span>
+                                            <span class="font-semibold ml-2">${formatCurrencyUSD(totalPayout)}</span>
+                                        </div>
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Taxa Aprovação:</span>
+                                            <span class="font-semibold ml-2">${totalLeads > 0 ? ((conversoes / totalLeads) * 100).toFixed(2) : '0.00'}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data/Hora</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campanha</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conjunto</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Anúncio</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead ID</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Offer ID</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payout</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub IDs</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            ${registros.map(item => {
+                                                const tipoClass = {
+                                                    'lead': 'bg-blue-100 text-blue-800',
+                                                    'conversao': 'bg-green-100 text-green-800',
+                                                    'approval': 'bg-green-100 text-green-800',
+                                                    'cancel': 'bg-red-100 text-red-800',
+                                                    'rejection': 'bg-red-100 text-red-800',
+                                                    'trash': 'bg-orange-100 text-orange-800'
+                                                }[item.notification_type] || 'bg-gray-100 text-gray-800';
+                                                
+                                                const subIds = [
+                                                    item.sub_id1 ? `sub1: ${item.sub_id1}` : '',
+                                                    item.sub_id2 ? `sub2: ${item.sub_id2}` : '',
+                                                    item.sub_id3 ? `sub3: ${item.sub_id3}` : '',
+                                                    item.sub_id4 ? `sub4: ${item.sub_id4}` : '',
+                                                    item.sub_id5 ? `sub5: ${item.sub_id5}` : '',
+                                                    item.sub_id6 ? `sub6: ${item.sub_id6}` : ''
+                                                ].filter(Boolean).join(', ') || 'N/A';
+                                                
+                                                const dateTime = item.created_at ? formatTime(item.created_at) : 'N/A';
+                                                const dateOnly = item.date || (item.created_at ? item.created_at.split(' ')[0] : 'N/A');
+                                                
+                                                return `
+                                                    <tr class="hover:bg-gray-50">
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.id || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                            <div>${dateOnly}</div>
+                                                            <div class="text-xs text-gray-500">${dateTime}</div>
+                                                        </td>
+                                                        <td class="px-4 py-3 whitespace-nowrap">
+                                                            <span class="px-2 py-1 text-xs font-semibold rounded-full ${tipoClass}">
+                                                                ${item.notification_type || 'N/A'}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-sm text-gray-900">${item.campanha || item.sub_id6 || item.sub_id3 || 'N/A'}</td>
+                                                        <td class="px-4 py-3 text-sm text-gray-900">${item.conjunto || item.sub_id5 || 'N/A'}</td>
+                                                        <td class="px-4 py-3 text-sm text-gray-900">${item.anuncio || item.sub_id4 || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.lead_id || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.offer_id || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.status || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-600">${item.payout ? formatCurrencyUSD(item.payout) : 'N/A'}</td>
+                                                        <td class="px-4 py-3 text-sm text-gray-500" title="${subIds}">
+                                                            <div class="max-w-xs truncate">${subIds}</div>
+                                                        </td>
+                                                    </tr>
+                                                `;
+                                            }).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (error) {
+                console.error('Erro ao agrupar extrato:', error);
+                alert('Erro ao agrupar extrato por Sub1. Verifique o console para mais detalhes.');
+            }
+        }
+
+        // Função para carregar extrato completo (todos os dias, sem filtros)
+        let extratoCompletoData = [];
+        
+        async function loadExtratoCompleto() {
+            try {
+                const table = document.getElementById('extratoCompletoTable');
+                if (table) {
+                    table.innerHTML = '<tr><td colspan="11" class="px-6 py-8 text-center text-gray-500">Carregando extrato completo...</td></tr>';
+                }
+                
+                // Buscar TODOS os registros sem nenhum filtro
+                const response = await fetch('/api/extrato');
+                extratoCompletoData = await response.json();
+                console.log('📋 Extrato completo carregado:', extratoCompletoData.length, 'registros');
+                renderExtratoCompleto();
+            } catch (error) {
+                console.error('❌ Erro ao carregar extrato completo:', error);
+                const table = document.getElementById('extratoCompletoTable');
+                if (table) {
+                    table.innerHTML = `<tr><td colspan="11" class="px-6 py-8 text-center text-red-500">Erro ao carregar extrato completo: ${error.message}</td></tr>`;
+                }
+            }
+        }
+        
+        // Função para renderizar extrato completo
+        function renderExtratoCompleto() {
+            const table = document.getElementById('extratoCompletoTable');
+            const totalElement = document.getElementById('extratoCompletoTotal');
+            
+            if (!table) return;
+            
+            if (extratoCompletoData.length === 0) {
+                table.innerHTML = '<tr><td colspan="11" class="px-6 py-8 text-center text-gray-500">Nenhum registro encontrado</td></tr>';
+                if (totalElement) totalElement.textContent = '0';
+                return;
+            }
+            
+            // Atualizar total e badge
+            if (totalElement) totalElement.textContent = extratoCompletoData.length;
+            const badgeExtratoCompleto = document.getElementById('badgeExtratoCompleto');
+            if (badgeExtratoCompleto) {
+                badgeExtratoCompleto.textContent = extratoCompletoData.length;
+                badgeExtratoCompleto.classList.remove('hidden');
+            }
+            
+            // Renderizar tabela
+            table.innerHTML = extratoCompletoData.map(item => {
+                const tipoClass = {
+                    'lead': 'bg-blue-100 text-blue-800',
+                    'conversao': 'bg-green-100 text-green-800',
+                    'approval': 'bg-green-100 text-green-800',
+                    'cancel': 'bg-red-100 text-red-800',
+                    'rejection': 'bg-red-100 text-red-800',
+                    'trash': 'bg-orange-100 text-orange-800'
+                }[item.notification_type] || 'bg-gray-100 text-gray-800';
+                
+                const subIds = [
+                    item.sub_id1 ? `sub1: ${item.sub_id1}` : '',
+                    item.sub_id2 ? `sub2: ${item.sub_id2}` : '',
+                    item.sub_id3 ? `sub3: ${item.sub_id3}` : '',
+                    item.sub_id4 ? `sub4: ${item.sub_id4}` : '',
+                    item.sub_id5 ? `sub5: ${item.sub_id5}` : '',
+                    item.sub_id6 ? `sub6: ${item.sub_id6}` : ''
+                ].filter(Boolean).join(', ') || 'N/A';
+                
+                const dateTime = item.created_at ? formatTime(item.created_at) : 'N/A';
+                const dateOnly = item.date || (item.created_at ? item.created_at.split(' ')[0] : 'N/A');
+                
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.id || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            <div>${dateOnly}</div>
+                            <div class="text-xs text-gray-500">${dateTime}</div>
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full ${tipoClass}">
+                                ${item.notification_type || 'N/A'}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.campanha || item.sub_id6 || item.sub_id3 || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.conjunto || item.sub_id5 || 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900">${item.anuncio || item.sub_id4 || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.lead_id || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.offer_id || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.status || 'N/A'}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-600">${item.payout ? formatCurrencyUSD(item.payout) : 'N/A'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500" title="${subIds}">
+                            <div class="max-w-xs truncate">${subIds}</div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Função genérica para agrupar por Sub1 (funciona para extrato normal e completo)
+        let extratoCompletoAgrupadoPorSub1 = false; // Flag para controlar se extrato completo está agrupado
+        
+        async function agruparExtratoPorSub1Completo() {
+            if (extratoCompletoData.length === 0) {
+                alert('Carregue o extrato completo primeiro antes de agrupar por Sub1.');
+                return;
+            }
+            
+            try {
+                // Garantir que os produtos estão carregados
+                if (produtosData.length === 0) {
+                    await loadProdutos();
+                }
+            } catch (error) {
+                console.error('Erro ao carregar produtos:', error);
+            }
+            
+            try {
+                // Agrupar dados por sub_id1
+                const grupos = {};
+                extratoCompletoData.forEach(item => {
+                    const sub1 = item.sub_id1 || item.categoria || 'Sem Conta';
+                    
+                    // Tentar encontrar nome_conta através do offer_id nos produtos cadastrados
+                    let nomeConta = sub1;
+                    if (item.offer_id) {
+                        const produto = produtosData.find(p => p.offer_id === item.offer_id);
+                        if (produto && produto.nome_conta) {
+                            nomeConta = produto.nome_conta;
+                        }
+                    }
+                    
+                    // Usar sub1 como chave do grupo (agrupa os iguais)
+                    const chaveGrupo = sub1 || 'Sem Conta';
+                    
+                    if (!grupos[chaveGrupo]) {
+                        grupos[chaveGrupo] = {
+                            sub1: sub1,
+                            nomeConta: nomeConta,
+                            registros: []
+                        };
+                    }
+                    grupos[chaveGrupo].registros.push(item);
+                });
+                
+                // Ordenar grupos: primeiro os que têm produtos cadastrados, depois os outros
+                const chavesOrdenadas = Object.keys(grupos).sort((a, b) => {
+                    const aTemProduto = produtosData.some(p => {
+                        const grupo = grupos[a];
+                        return grupo && grupo.nomeConta && produtosData.some(prod => prod.nome_conta === grupo.nomeConta);
+                    });
+                    const bTemProduto = produtosData.some(p => {
+                        const grupo = grupos[b];
+                        return grupo && grupo.nomeConta && produtosData.some(prod => prod.nome_conta === grupo.nomeConta);
+                    });
+                    
+                    if (aTemProduto && !bTemProduto) return -1;
+                    if (!aTemProduto && bTemProduto) return 1;
+                    return a.localeCompare(b);
+                });
+                
+                // Renderizar grupos
+                const container = document.getElementById('extratoCompletoAgrupadoPorSub1');
+                const tabelaNormal = document.getElementById('extratoCompletoTabelaNormal');
+                
+                if (!container || !tabelaNormal) return;
+                
+                if (extratoCompletoAgrupadoPorSub1) {
+                    // Voltar ao modo normal
+                    extratoCompletoAgrupadoPorSub1 = false;
+                    container.classList.add('hidden');
+                    tabelaNormal.classList.remove('hidden');
+                    const btn = document.getElementById('btnAgruparPorSub1Completo');
+                    const btnHeader = document.getElementById('btnAgruparPorSub1Header');
+                    if (btn) {
+                        btn.innerHTML = `
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                            </svg>
+                            Agrupar por Conta (Sub1)
+                        `;
+                    }
+                    if (btnHeader) {
+                        btnHeader.innerHTML = `
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                            </svg>
+                            Agrupar por Conta (Sub1)
+                        `;
+                    }
+                } else {
+                    // Mostrar agrupado
+                    extratoCompletoAgrupadoPorSub1 = true;
+                    container.classList.remove('hidden');
+                    tabelaNormal.classList.add('hidden');
+                    const btn = document.getElementById('btnAgruparPorSub1Completo');
+                    const btnHeader = document.getElementById('btnAgruparPorSub1Header');
+                    if (btn) {
+                        btn.innerHTML = `
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                            </svg>
+                            Ver Tabela Normal
+                        `;
+                    }
+                    if (btnHeader) {
+                        btnHeader.innerHTML = `
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                            </svg>
+                            Ver Tabela Normal
+                        `;
+                    }
+                    
+                    container.innerHTML = chavesOrdenadas.map(chave => {
+                        const grupo = grupos[chave];
+                        const registros = grupo.registros;
+                        const totalPayout = registros.reduce((sum, r) => sum + (parseFloat(r.payout) || 0), 0);
+                        const totalLeads = registros.length;
+                        const conversoes = registros.filter(r => r.notification_type === 'conversao' || r.notification_type === 'approval').length;
+                        const leads = registros.filter(r => r.notification_type === 'lead').length;
+                        
+                        // Verificar se é uma conta cadastrada (tem produto com esse nome_conta)
+                        const contaCadastrada = produtosData.some(p => p.nome_conta === grupo.nomeConta);
+                        
+                        return `
+                            <div class="bg-white rounded-lg shadow-md overflow-hidden border-2 ${contaCadastrada ? 'border-purple-400' : 'border-gray-300'}">
+                                <div class="bg-gradient-to-r ${contaCadastrada ? 'from-purple-500 to-purple-600' : 'from-gray-500 to-gray-600'} px-6 py-4 text-white">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <h4 class="text-lg font-bold flex items-center gap-2">
+                                                ${grupo.nomeConta || grupo.sub1 || 'Sem Conta'}
+                                                ${contaCadastrada ? '<span class="text-xs bg-white bg-opacity-30 px-2 py-1 rounded-full">Cadastrada</span>' : ''}
+                                            </h4>
+                                            <p class="text-sm ${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Sub1: ${grupo.sub1 || 'N/A'}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-sm ${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Total de Registros</div>
+                                            <div class="text-2xl font-bold">${totalLeads}</div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 grid grid-cols-4 gap-4 text-sm">
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Leads:</span>
+                                            <span class="font-semibold ml-2">${leads}</span>
+                                        </div>
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Conversões:</span>
+                                            <span class="font-semibold ml-2">${conversoes}</span>
+                                        </div>
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Valor Total:</span>
+                                            <span class="font-semibold ml-2">${formatCurrencyUSD(totalPayout)}</span>
+                                        </div>
+                                        <div>
+                                            <span class="${contaCadastrada ? 'text-purple-100' : 'text-gray-200'}">Taxa Aprovação:</span>
+                                            <span class="font-semibold ml-2">${totalLeads > 0 ? ((conversoes / totalLeads) * 100).toFixed(2) : '0.00'}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data/Hora</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campanha</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conjunto</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Anúncio</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead ID</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Offer ID</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payout</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub IDs</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            ${registros.map(item => {
+                                                const tipoClass = {
+                                                    'lead': 'bg-blue-100 text-blue-800',
+                                                    'conversao': 'bg-green-100 text-green-800',
+                                                    'approval': 'bg-green-100 text-green-800',
+                                                    'cancel': 'bg-red-100 text-red-800',
+                                                    'rejection': 'bg-red-100 text-red-800',
+                                                    'trash': 'bg-orange-100 text-orange-800'
+                                                }[item.notification_type] || 'bg-gray-100 text-gray-800';
+                                                
+                                                const subIds = [
+                                                    item.sub_id1 ? `sub1: ${item.sub_id1}` : '',
+                                                    item.sub_id2 ? `sub2: ${item.sub_id2}` : '',
+                                                    item.sub_id3 ? `sub3: ${item.sub_id3}` : '',
+                                                    item.sub_id4 ? `sub4: ${item.sub_id4}` : '',
+                                                    item.sub_id5 ? `sub5: ${item.sub_id5}` : '',
+                                                    item.sub_id6 ? `sub6: ${item.sub_id6}` : ''
+                                                ].filter(Boolean).join(', ') || 'N/A';
+                                                
+                                                const dateTime = item.created_at ? formatTime(item.created_at) : 'N/A';
+                                                const dateOnly = item.date || (item.created_at ? item.created_at.split(' ')[0] : 'N/A');
+                                                
+                                                return `
+                                                    <tr class="hover:bg-gray-50">
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.id || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                            <div>${dateOnly}</div>
+                                                            <div class="text-xs text-gray-500">${dateTime}</div>
+                                                        </td>
+                                                        <td class="px-4 py-3 whitespace-nowrap">
+                                                            <span class="px-2 py-1 text-xs font-semibold rounded-full ${tipoClass}">
+                                                                ${item.notification_type || 'N/A'}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-sm text-gray-900">${item.campanha || item.sub_id6 || item.sub_id3 || 'N/A'}</td>
+                                                        <td class="px-4 py-3 text-sm text-gray-900">${item.conjunto || item.sub_id5 || 'N/A'}</td>
+                                                        <td class="px-4 py-3 text-sm text-gray-900">${item.anuncio || item.sub_id4 || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.lead_id || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.offer_id || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${item.status || 'N/A'}</td>
+                                                        <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-600">${item.payout ? formatCurrencyUSD(item.payout) : 'N/A'}</td>
+                                                        <td class="px-4 py-3 text-sm text-gray-500" title="${subIds}">
+                                                            <div class="max-w-xs truncate">${subIds}</div>
+                                                        </td>
+                                                    </tr>
+                                                `;
+                                            }).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (error) {
+                console.error('Erro ao agrupar extrato completo:', error);
+                alert('Erro ao agrupar extrato completo por Sub1. Verifique o console para mais detalhes.');
+            }
+        }
+
+        // Event listeners para tabs
+        document.getElementById('tabCampanhas').addEventListener('click', () => switchTab('campanhas'));
+        document.getElementById('tabConjuntos').addEventListener('click', () => switchTab('conjuntos'));
+        document.getElementById('tabAnuncios').addEventListener('click', () => switchTab('anuncios'));
+        document.getElementById('tabExtrato').addEventListener('click', () => switchTab('extrato'));
+        document.getElementById('tabExtratoCompleto').addEventListener('click', () => switchTab('extratoCompleto'));
+        
+        // Event listener para botão no header
+        document.getElementById('btnExtratoCompleto').addEventListener('click', () => {
+            switchTab('extratoCompleto');
+        });
+        
+        // Event listener para botão de agrupar por Sub1 no header (funciona em ambas as abas)
+        document.getElementById('btnAgruparPorSub1Header').addEventListener('click', () => {
+            // Verificar qual aba está ativa
+            if (currentTab === 'extratoCompleto') {
+                agruparExtratoPorSub1Completo();
+            } else if (currentTab === 'extrato') {
+                agruparExtratoPorSub1();
+            } else {
+                // Se não estiver em nenhuma aba de extrato, navegar para extrato completo
+                switchTab('extratoCompleto');
+                setTimeout(() => {
+                    agruparExtratoPorSub1Completo();
+                }, 500);
+            }
+        });
+        
+        // Event listener para botão de agrupar por Sub1 no extrato completo
+        document.getElementById('btnAgruparPorSub1Completo').addEventListener('click', () => {
+            agruparExtratoPorSub1Completo();
+        });
+
+        // Atualizar texto das tabs com contagem
+        function updateTabTexts() {
+            if (selectedCampanhas.size > 0) {
+                // Contar conjuntos das campanhas selecionadas
+                const totalConjuntos = hierarchyData
+                    .filter(c => selectedCampanhas.has(c.nome))
+                    .reduce((sum, c) => sum + c.conjuntos.length, 0);
+                
+                document.getElementById('tabConjuntosText').textContent = `Conjuntos de anúncios para ${selectedCampanhas.size} campanha${selectedCampanhas.size > 1 ? 's' : ''}`;
+                document.getElementById('badgeConjuntos').textContent = totalConjuntos;
+                document.getElementById('badgeConjuntos').classList.remove('hidden');
+            } else {
+                document.getElementById('tabConjuntosText').textContent = 'Conjuntos de anúncios';
+                const totalConjuntos = hierarchyData.reduce((sum, c) => sum + c.conjuntos.length, 0);
+                if (totalConjuntos > 0) {
+                    document.getElementById('badgeConjuntos').textContent = totalConjuntos;
+                    document.getElementById('badgeConjuntos').classList.remove('hidden');
+                } else {
+                    document.getElementById('badgeConjuntos').classList.add('hidden');
+                }
+            }
+            if (selectedConjuntos.size > 0) {
+                // Contar anúncios dos conjuntos selecionados
+                const totalAnuncios = hierarchyData
+                    .reduce((sum, campanha) => {
+                        return sum + campanha.conjuntos
+                            .filter(conj => selectedConjuntos.has(`${campanha.nome}::${conj.nome}`))
+                            .reduce((s, conj) => s + conj.anuncios.length, 0);
+                    }, 0);
+                
+                document.getElementById('tabAnunciosText').textContent = `Anúncios para ${selectedConjuntos.size} conjunto${selectedConjuntos.size > 1 ? 's' : ''}`;
+                document.getElementById('badgeAnuncios').textContent = totalAnuncios;
+                document.getElementById('badgeAnuncios').classList.remove('hidden');
+            } else {
+                document.getElementById('tabAnunciosText').textContent = 'Anúncios';
+                const totalAnuncios = hierarchyData.reduce((sum, c) => 
+                    sum + c.conjuntos.reduce((s, conj) => s + conj.anuncios.length, 0), 0);
+                if (totalAnuncios > 0) {
+                    document.getElementById('badgeAnuncios').textContent = totalAnuncios;
+                    document.getElementById('badgeAnuncios').classList.remove('hidden');
+                } else {
+                    document.getElementById('badgeAnuncios').classList.add('hidden');
+                }
+            }
+        }
+
+        // ============================================
+        // FIM DO GERENCIAMENTO DE HIERARQUIA
+        // ============================================
+
+        // Inicialização
+        const today = new Date();
+        document.getElementById('currentDateDisplay').textContent = formatDate(formatDateISO(today));
+        loadHierarchy();
+        loadDatesWithConversions();
+        loadStats();
+        loadConversions();
+        renderCalendar();
+        updateFilterInfo();
+
+        // ============================================
+        // GERENCIAMENTO DE PRODUTOS
+        // ============================================
+        // (produtoSelecionado e produtosData já foram declarados acima)
+
+        // Carregar produtos
+        async function loadProdutos() {
+            try {
+                const response = await fetch('/api/produtos');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                produtosData = await response.json();
+                renderListaProdutos();
+                renderListaProdutosSelecao();
+            } catch (error) {
+                console.error('❌ Erro ao carregar produtos:', error);
+            }
+        }
+
+        // Renderizar lista de produtos no cadastro
+        function renderListaProdutos() {
+            const lista = document.getElementById('listaProdutos');
+            if (!lista) return;
+
+            if (produtosData.length === 0) {
+                lista.innerHTML = '<div class="text-center text-gray-500 py-4">Nenhum produto cadastrado ainda</div>';
+                return;
+            }
+
+            lista.innerHTML = produtosData.map(produto => `
+                <div class="border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                        <div class="font-semibold text-gray-900">${produto.nome_produto}</div>
+                        <div class="text-sm text-gray-600">Offer ID: ${produto.offer_id}</div>
+                        <div class="text-sm text-gray-600">Conta: ${produto.nome_conta}</div>
+                    </div>
+                    <button onclick="deleteProduto(${produto.id})" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm transition-colors">
+                        Excluir
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Renderizar lista de produtos para seleção
+        function renderListaProdutosSelecao() {
+            const lista = document.getElementById('listaProdutosSelecao');
+            if (!lista) return;
+
+            if (produtosData.length === 0) {
+                lista.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">Nenhum produto cadastrado. Cadastre um produto primeiro.</div>';
+                return;
+            }
+
+            lista.innerHTML = produtosData.map(produto => `
+                <div class="border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors" onclick="selecionarProduto('${produto.offer_id}', '${produto.nome_produto}', '${produto.nome_conta}')">
+                    <div class="font-semibold text-gray-900 mb-2">${produto.nome_produto}</div>
+                    <div class="text-sm text-gray-600 mb-1">Offer ID: ${produto.offer_id}</div>
+                    <div class="text-sm text-gray-600">Conta: ${produto.nome_conta}</div>
+                </div>
+            `).join('');
+        }
+
+        // Selecionar produto e aplicar filtro
+        window.selecionarProduto = function(offerId, nomeProduto, nomeConta) {
+            produtoSelecionado = { offerId, nomeProduto, nomeConta };
+            document.getElementById('modalProdutos').classList.add('hidden');
+            document.getElementById('filtroProdutoAtivo').classList.remove('hidden');
+            document.getElementById('nomeProdutoFiltro').textContent = nomeProduto;
+            document.getElementById('offerIdFiltro').textContent = offerId;
+            
+            // Recarregar dados com filtro
+            loadStats();
+            loadConversions();
+            loadHierarchy();
+            if (currentTab === 'extrato') {
+                loadExtrato();
+            }
+        };
+
+        // Remover filtro de produto
+        document.getElementById('removerFiltroProduto').addEventListener('click', () => {
+            produtoSelecionado = null;
+            document.getElementById('filtroProdutoAtivo').classList.add('hidden');
+            loadStats();
+            loadConversions();
+            loadHierarchy();
+            if (currentTab === 'extrato') {
+                loadExtrato();
+            }
+        });
+
+        // Deletar produto
+        window.deleteProduto = async function(id) {
+            if (!confirm('Tem certeza que deseja excluir este produto?')) return;
+            
+            try {
+                const response = await fetch(`/api/produtos/${id}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Erro ao deletar produto');
+                await loadProdutos();
+            } catch (error) {
+                console.error('❌ Erro ao deletar produto:', error);
+                alert('Erro ao deletar produto');
+            }
+        };
+
+        // Event listeners para modais
+        document.getElementById('btnCadastroProdutos').addEventListener('click', () => {
+            document.getElementById('modalCadastroProdutos').classList.remove('hidden');
+            loadProdutos();
+        });
+
+        document.getElementById('closeCadastroProdutos').addEventListener('click', () => {
+            document.getElementById('modalCadastroProdutos').classList.add('hidden');
+        });
+
+        document.getElementById('btnProdutos').addEventListener('click', () => {
+            document.getElementById('modalProdutos').classList.remove('hidden');
+            loadProdutos();
+        });
+
+        document.getElementById('closeProdutos').addEventListener('click', () => {
+            document.getElementById('modalProdutos').classList.add('hidden');
+        });
+
+        // Formulário de cadastro
+        document.getElementById('formProduto').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const nomeProduto = document.getElementById('nomeProduto').value;
+            const offerId = document.getElementById('offerIdProduto').value;
+            const nomeConta = document.getElementById('nomeContaProduto').value;
+
+            try {
+                const response = await fetch('/api/produtos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nome_produto: nomeProduto, offer_id: offerId, nome_conta: nomeConta })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Erro ao cadastrar produto');
+                }
+
+                // Limpar formulário
+                document.getElementById('formProduto').reset();
+                await loadProdutos();
+                alert('Produto cadastrado com sucesso!');
+            } catch (error) {
+                console.error('❌ Erro ao cadastrar produto:', error);
+                alert(error.message || 'Erro ao cadastrar produto');
+            }
+        });
+
+        // Atualizar a cada 10 segundos
+        setInterval(() => {
+            loadHierarchy();
+            loadDatesWithConversions();
+            loadStats();
+            loadConversions();
+            if (currentTab === 'extrato') {
+                loadExtrato();
+            }
+        }, 10000);
+
+        // Carregar produtos na inicialização
+        loadProdutos();
+        
+        // Botão "Agrupar por Sub1" na aba Extrato
+        document.getElementById('btnAgruparPorSub1').addEventListener('click', () => {
+            agruparExtratoPorSub1();
+        });
+        
+        // Botão "Ver Todos os Postbacks" na aba Extrato
+        document.getElementById('btnVerTodosExtrato').addEventListener('click', () => {
+            extratoSemFiltros = !extratoSemFiltros;
+            const btn = document.getElementById('btnVerTodosExtrato');
+            if (extratoSemFiltros) {
+                btn.textContent = 'Aplicar Filtros';
+                btn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                btn.classList.add('bg-green-500', 'hover:bg-green-600');
+            } else {
+                btn.textContent = 'Ver Todos os Postbacks';
+                btn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                btn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+            }
+            loadExtrato();
+        });
+    </script>
+</body>
+</html>
