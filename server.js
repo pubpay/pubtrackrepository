@@ -142,9 +142,15 @@ function dbRun(sql, params, callback) {
         changes: result.rowCount || 0
       };
       
-      // Bind do callback para que this.lastID e this.changes funcionem
-      const boundCallback = callback.bind(mockResult);
-      boundCallback(null);
+      // Se o callback usa this.lastID, precisamos bind
+      if (callback.length === 1) {
+        // Callback é function(err) e usa this.lastID
+        const boundCallback = callback.bind(mockResult);
+        boundCallback(null);
+      } else {
+        // Callback é function(err, result)
+        callback(null, mockResult);
+      }
     })
     .catch(err => {
       callback(err);
@@ -824,7 +830,7 @@ function processPostback(req, res, notificationType) {
       return res.status(500).json({ success: false, error: 'Erro ao salvar dados' });
     }
     
-    console.log('✅ Dados salvos com sucesso (ID:', (result && result.lastID) || 'N/A' + ')');
+    console.log('✅ Dados salvos com sucesso (ID:', this.lastID || 'N/A' + ')');
     console.log('   Hierarquia salva:');
     console.log('     Campanha:', campanha_final || 'N/A');
     console.log('     Conjunto:', conjunto_final || 'N/A');
