@@ -722,7 +722,7 @@ function processPostback(req, res, notificationType) {
         
         // Buscar categoria do produto se houver offer_id
         const finalOfferId = offer_id || existingLead.offer_id;
-        db.get('SELECT nome_conta FROM produtos WHERE offer_id = ?', [finalOfferId], (errProd, produto) => {
+        dbGet('SELECT nome_conta FROM produtos WHERE offer_id = ?', [finalOfferId], (errProd, produto) => {
           const categoriaAtual = produto ? produto.nome_conta : null;
           
           // CRÍTICO: NÃO atualizar a data - manter a data original do lead
@@ -946,7 +946,7 @@ app.get('/api/conversions', (req, res) => {
     sql += ` WHERE ${conditions.join(' AND ')}`;
   }
 
-  sql += ` ORDER BY COALESCE(date, created_at) DESC, created_at DESC`;
+  sql += ` ORDER BY COALESCE(date, created_at::text) DESC, created_at DESC`;
   
   dbAll(sql, params, (err, rows) => {
     if (err) {
@@ -1731,7 +1731,7 @@ app.get('/api/conversions/dates', (req, res) => {
     ORDER BY date DESC
   `;
   
-  db.all(sql, [], (err, rows) => {
+  dbAll(sql, [], (err, rows) => {
     if (err) {
       console.error('Erro ao buscar datas:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados' });
@@ -1751,7 +1751,7 @@ app.get('/api/campaign-stats', (req, res) => {
 
   const sql = `SELECT * FROM campaign_stats ORDER BY campanha, conjunto, anuncio`;
   
-  db.all(sql, [], (err, rows) => {
+  dbAll(sql, [], (err, rows) => {
     if (err) {
       console.error('Erro ao buscar estatísticas:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados' });
@@ -2464,7 +2464,7 @@ app.get('/api/metricas/sub2', (req, res) => {
       }
     }
 
-    db.get(sqlTotais, paramsTotais, (errTotais, totais) => {
+    dbGet(sqlTotais, paramsTotais, (errTotais, totais) => {
       if (errTotais) {
         console.error('❌ Erro ao buscar totais:', errTotais.message);
         return res.status(500).json({ error: 'Erro ao buscar totais', details: errTotais.message });
