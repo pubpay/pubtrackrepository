@@ -290,10 +290,10 @@ function updateCampaignStats(campanha, campanhaId, conjunto, conjuntoId, anuncio
   // Usar INSERT OR REPLACE para criar ou atualizar
   // Se increment for negativo, decrementar (mas não deixar negativo)
   const incrementValue = increment;
-  // SQLite não tem MAX() para comparação, usar CASE WHEN
+  // PostgreSQL precisa qualificar a coluna com o nome da tabela no ON CONFLICT
   const updateExpression = increment > 0 
-    ? `${fieldToUpdate} = ${fieldToUpdate} + ${incrementValue}`
-    : `${fieldToUpdate} = CASE WHEN (${fieldToUpdate} + ${incrementValue}) < 0 THEN 0 ELSE (${fieldToUpdate} + ${incrementValue}) END`;
+    ? `${fieldToUpdate} = campaign_stats.${fieldToUpdate} + ${incrementValue}`
+    : `${fieldToUpdate} = CASE WHEN (campaign_stats.${fieldToUpdate} + ${incrementValue}) < 0 THEN 0 ELSE (campaign_stats.${fieldToUpdate} + ${incrementValue}) END`;
   
   const sql = `INSERT INTO campaign_stats (campanha, campanha_id, conjunto, conjunto_id, anuncio, anuncio_id, placement, site_source, ${fieldToUpdate}, updated_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
