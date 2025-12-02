@@ -9,8 +9,7 @@ module.exports = {
     max_memory_restart: '1G',
     env: {
       NODE_ENV: 'production',
-      PORT: 3000,
-      DATABASE_URL: 'postgresql://postgres:u%26ohBxd9%21@db.pwpgfqvbfxhfpprsfaya.supabase.co:5432/postgres'
+      PORT: 3000
     }
   }]
 };

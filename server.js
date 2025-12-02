@@ -1,5 +1,5 @@
 const express = require('express');
-const { Pool } = require('pg');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
@@ -23,156 +23,260 @@ app.use((req, res, next) => {
   next();
 });
 
-// Configuração do banco de dados PostgreSQL
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:u%26ohBxd9%21@db.pwpgfqvbfxhfpprsfaya.supabase.co:5432/postgres',
-  ssl: { rejectUnauthorized: false }
-});
+// Criar pasta database se não existir
+const databaseDir = path.join(__dirname, 'database');
+console.log('📁 Diretório do projeto:', __dirname);
+console.log('📁 Tentando criar/verificar pasta database:', databaseDir);
 
-// Testar conexão
-db.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('❌ Erro ao conectar ao banco de dados:', err.message);
+try {
+  if (!fs.existsSync(databaseDir)) {
+    fs.mkdirSync(databaseDir, { recursive: true });
+    console.log('✅ Pasta database criada:', databaseDir);
   } else {
-    console.log('✅ Conectado ao banco de dados PostgreSQL');
-    console.log('🕐 Hora do servidor:', res.rows[0].now);
+    console.log('✅ Pasta database já existe:', databaseDir);
   }
-});
-
-// Criar tabelas se não existirem
-async function initDatabase() {
+  
+  // Verificar permissões
+  const stats = fs.statSync(databaseDir);
+  console.log('📊 Permissões da pasta:', stats.mode.toString(8));
+  console.log('📊 É diretório?', stats.isDirectory());
+  
+  // Testar se podemos escrever na pasta
+  const testFile = path.join(databaseDir, '.test-write');
   try {
-    // Tabela conversions
-    await db.query(`CREATE TABLE IF NOT EXISTS conversions (
-      id SERIAL PRIMARY KEY,
-      sub_id1 TEXT,
-      sub_id2 TEXT,
-      sub_id3 TEXT,
-      sub_id4 TEXT,
-      sub_id5 TEXT,
-      sub_id6 TEXT,
-      sub_id7 TEXT,
-      sub_id8 TEXT,
-      campanha TEXT,
-      conjunto TEXT,
-      anuncio TEXT,
-      offer_id TEXT,
-      lead_id TEXT,
-      status TEXT,
-      payout REAL,
-      date TEXT,
-      notification_type TEXT,
-      utm_source TEXT,
-      utm_medium TEXT,
-      categoria TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )`);
-    console.log('✅ Tabela conversions criada/verificada');
+    fs.writeFileSync(testFile, 'test');
+    fs.unlinkSync(testFile);
+    console.log('✅ Pasta tem permissão de escrita');
+  } catch (writeErr) {
+    console.error('❌ Pasta NÃO tem permissão de escrita:', writeErr.message);
+  }
+} catch (err) {
+  console.error('❌ Erro ao criar/verificar pasta database:', err.message);
+  console.error('Stack:', err.stack);
+}
 
-    // Adicionar colunas se não existirem
-    const columns = ['campanha', 'conjunto', 'anuncio', 'lead_id', 'categoria'];
-    for (const col of columns) {
-      try {
-        await db.query(`ALTER TABLE conversions ADD COLUMN IF NOT EXISTS ${col} TEXT`);
-      } catch (e) {
-        // Ignorar se já existe
-      }
+// Caminho do banco de dados
+const dbPath = path.join(__dirname, 'database', 'data.db');
+console.log('📁 Caminho completo do banco:', dbPath);
+
+// Verificar se o diretório pai existe antes de criar o banco
+if (!fs.existsSync(databaseDir)) {
+  console.error('❌ Diretório database não existe após tentativa de criação!');
+}
+
+// Inicializar banco de dados com modo de escrita
+let db;
+try {
+  // Tentar criar o arquivo vazio primeiro para garantir permissões
+  if (!fs.existsSync(dbPath)) {
+    try {
+      fs.writeFileSync(dbPath, '');
+      console.log('✅ Arquivo data.db criado com sucesso');
+    } catch (fileErr) {
+      console.error('❌ Erro ao criar arquivo data.db:', fileErr.message);
     }
-    console.log('✅ Colunas verificadas');
-
-    // Tabela produtos
-    await db.query(`CREATE TABLE IF NOT EXISTS produtos (
-      id SERIAL PRIMARY KEY,
-      nome_produto TEXT NOT NULL,
-      offer_id TEXT NOT NULL,
-      nome_conta TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )`);
-    console.log('✅ Tabela produtos criada/verificada');
-
-    // Tabela campaign_stats
-    await db.query(`CREATE TABLE IF NOT EXISTS campaign_stats (
-      id SERIAL PRIMARY KEY,
-      campanha TEXT,
-      campanha_id TEXT,
-      conjunto TEXT,
-      conjunto_id TEXT,
-      anuncio TEXT,
-      anuncio_id TEXT,
-      placement TEXT,
-      site_source TEXT,
-      leads INTEGER DEFAULT 0,
-      conversoes INTEGER DEFAULT 0,
-      trash INTEGER DEFAULT 0,
-      cancel INTEGER DEFAULT 0,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(campanha, conjunto, anuncio)
-    )`);
-    console.log('✅ Tabela campaign_stats criada/verificada');
-  } catch (err) {
-    console.error('❌ Erro ao inicializar banco:', err.message);
-  }
-}
-
-initDatabase();
-
-// Função auxiliar para converter callbacks SQLite para PostgreSQL
-function dbRun(sql, params, callback) {
-  // Converter ? para $1, $2, etc.
-  let paramIndex = 1;
-  let convertedSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
-  
-  // Se for INSERT sem RETURNING, adicionar RETURNING id
-  if (sql.trim().toUpperCase().startsWith('INSERT') && !sql.includes('RETURNING')) {
-    convertedSql = convertedSql.replace(/;?\s*$/, '') + ' RETURNING id';
   }
   
-  db.query(convertedSql, params || [])
-    .then(result => {
-      // Para INSERT, pegar o ID retornado
-      let lastID = null;
-      if (result.rows && result.rows.length > 0 && result.rows[0].id) {
-        lastID = result.rows[0].id;
+  db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+    if (err) {
+      console.error('❌ Erro ao conectar ao banco de dados:', err.message);
+      console.error('Caminho tentado:', dbPath);
+      console.error('Diretório existe?', fs.existsSync(databaseDir));
+      if (fs.existsSync(databaseDir)) {
+        try {
+          const stats = fs.statSync(databaseDir);
+          console.error('Permissões do diretório:', stats.mode.toString(8));
+          console.error('É diretório?', stats.isDirectory());
+        } catch (statErr) {
+          console.error('Erro ao verificar permissões:', statErr.message);
+        }
       }
-      
-      // Criar objeto mock com lastID e changes para compatibilidade
-      const mockResult = {
-        lastID: lastID,
-        changes: result.rowCount || 0
-      };
-      
-      // Se o callback usa this.lastID, precisamos bind
-      if (callback.length === 1) {
-        // Callback é function(err) e usa this.lastID
-        const boundCallback = callback.bind(mockResult);
-        boundCallback(null);
-      } else {
-        // Callback é function(err, result)
-        callback(null, mockResult);
-      }
-    })
-    .catch(err => {
-      callback(err);
-    });
-}
+      // Tentar verificar se o arquivo existe
+      console.error('Arquivo data.db existe?', fs.existsSync(dbPath));
+    } else {
+      console.log('✅ Conectado ao banco de dados SQLite');
+      console.log('📁 Caminho do banco:', dbPath);
+      // Criar tabelas se não existirem
+      db.run(`CREATE TABLE IF NOT EXISTS conversions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sub_id1 TEXT,
+        sub_id2 TEXT,
+        sub_id3 TEXT,
+        sub_id4 TEXT,
+        sub_id5 TEXT,
+        sub_id6 TEXT,
+        sub_id7 TEXT,
+        sub_id8 TEXT,
+        campanha TEXT,
+        conjunto TEXT,
+        anuncio TEXT,
+        offer_id TEXT,
+        lead_id TEXT,
+        status TEXT,
+        payout REAL,
+        date TEXT,
+        notification_type TEXT,
+        utm_source TEXT,
+        utm_medium TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`, (err) => {
+        if (err) {
+          console.error('❌ Erro ao criar tabela conversions:', err.message);
+        } else {
+          console.log('✅ Tabela conversions criada/verificada');
+          
+          // Adicionar colunas campanha, conjunto, anuncio se não existirem (migração)
+          db.all("PRAGMA table_info(conversions)", [], (err, columns) => {
+            if (err) {
+              console.error('❌ Erro ao verificar colunas:', err.message);
+              return;
+            }
+            
+            const columnNames = columns.map(col => col.name);
+            const columnsToAdd = [];
+            
+            if (!columnNames.includes('campanha')) {
+              columnsToAdd.push('campanha TEXT');
+            }
+            if (!columnNames.includes('conjunto')) {
+              columnsToAdd.push('conjunto TEXT');
+            }
+            if (!columnNames.includes('anuncio')) {
+              columnsToAdd.push('anuncio TEXT');
+            }
+            if (!columnNames.includes('lead_id')) {
+              columnsToAdd.push('lead_id TEXT');
+            }
+            if (!columnNames.includes('categoria')) {
+              columnsToAdd.push('categoria TEXT');
+            }
+            
+            if (columnsToAdd.length > 0) {
+              columnsToAdd.forEach(colDef => {
+                const colName = colDef.split(' ')[0];
+                db.run(`ALTER TABLE conversions ADD COLUMN ${colDef}`, (err) => {
+                  if (err) {
+                    console.error(`❌ Erro ao adicionar coluna ${colName}:`, err.message);
+                  } else {
+                    console.log(`✅ Coluna ${colName} adicionada com sucesso`);
+                  }
+                });
+              });
+            } else {
+              console.log('✅ Todas as colunas necessárias já existem');
+            }
+          });
+        }
+      });
 
-function dbGet(sql, params, callback) {
-  let paramIndex = 1;
-  const convertedSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
-  
-  db.query(convertedSql, params || [])
-    .then(result => callback(null, result.rows[0] || null))
-    .catch(err => callback(err));
-}
+      // Criar tabela de produtos cadastrados
+      db.run(`CREATE TABLE IF NOT EXISTS produtos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome_produto TEXT NOT NULL,
+        offer_id TEXT NOT NULL,
+        nome_conta TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`, (err) => {
+        if (err) {
+          console.error('❌ Erro ao criar tabela produtos:', err.message);
+        } else {
+          console.log('✅ Tabela produtos criada/verificada');
+          
+          // Migração: Remover constraint UNIQUE do offer_id se existir
+          db.all("SELECT sql FROM sqlite_master WHERE type='table' AND name='produtos'", [], (err, rows) => {
+            if (err) {
+              console.error('❌ Erro ao verificar estrutura da tabela produtos:', err.message);
+              return;
+            }
+            
+            if (rows.length > 0) {
+              const createTableSql = rows[0].sql || '';
+              // Verificar se há constraint UNIQUE no offer_id
+              if (createTableSql.includes('offer_id TEXT NOT NULL UNIQUE') || createTableSql.includes('offer_id TEXT UNIQUE')) {
+                console.log('🔄 Migrando tabela produtos: removendo constraint UNIQUE do offer_id...');
+                
+                // Criar nova tabela sem a constraint UNIQUE
+                db.run(`CREATE TABLE produtos_new (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  nome_produto TEXT NOT NULL,
+                  offer_id TEXT NOT NULL,
+                  nome_conta TEXT NOT NULL,
+                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`, (err) => {
+                  if (err) {
+                    console.error('❌ Erro ao criar tabela produtos_new:', err.message);
+                    return;
+                  }
+                  
+                  // Copiar dados da tabela antiga para a nova
+                  db.run(`INSERT INTO produtos_new (id, nome_produto, offer_id, nome_conta, created_at, updated_at)
+                          SELECT id, nome_produto, offer_id, nome_conta, created_at, updated_at FROM produtos`, (err) => {
+                    if (err) {
+                      console.error('❌ Erro ao copiar dados:', err.message);
+                      // Remover tabela nova em caso de erro
+                      db.run('DROP TABLE produtos_new');
+                      return;
+                    }
+                    
+                    // Remover tabela antiga
+                    db.run('DROP TABLE produtos', (err) => {
+                      if (err) {
+                        console.error('❌ Erro ao remover tabela antiga:', err.message);
+                        return;
+                      }
+                      
+                      // Renomear tabela nova
+                      db.run('ALTER TABLE produtos_new RENAME TO produtos', (err) => {
+                        if (err) {
+                          console.error('❌ Erro ao renomear tabela:', err.message);
+                        } else {
+                          console.log('✅ Migração concluída: constraint UNIQUE removida do offer_id');
+                        }
+                      });
+                    });
+                  });
+                });
+              } else {
+                console.log('✅ Tabela produtos já está sem constraint UNIQUE no offer_id');
+              }
+            }
+          });
+        }
+      });
 
-function dbAll(sql, params, callback) {
-  let paramIndex = 1;
-  const convertedSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
-  
-  db.query(convertedSql, params || [])
-    .then(result => callback(null, result.rows))
-    .catch(err => callback(err));
+      // Criar tabela de estatísticas por campanha
+      db.run(`CREATE TABLE IF NOT EXISTS campaign_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campanha TEXT,
+        campanha_id TEXT,
+        conjunto TEXT,
+        conjunto_id TEXT,
+        anuncio TEXT,
+        anuncio_id TEXT,
+        placement TEXT,
+        site_source TEXT,
+        leads INTEGER DEFAULT 0,
+        conversoes INTEGER DEFAULT 0,
+        trash INTEGER DEFAULT 0,
+        cancel INTEGER DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(campanha, conjunto, anuncio)
+      )`, (err) => {
+        if (err) {
+          console.error('❌ Erro ao criar tabela campaign_stats:', err.message);
+        } else {
+          console.log('✅ Tabela campaign_stats criada/verificada');
+        }
+      });
+    }
+  });
+} catch (dbErr) {
+  console.error('❌ Erro ao inicializar banco de dados:', dbErr.message);
+  console.error('Stack:', dbErr.stack);
+  // Criar um banco "mock" para não quebrar a aplicação
+  db = null;
 }
 
 // Função auxiliar para obter data/hora atual no formato SQL (YYYY-MM-DD HH:MM:SS) no fuso do Brasil
@@ -290,25 +394,25 @@ function updateCampaignStats(campanha, campanhaId, conjunto, conjuntoId, anuncio
   // Usar INSERT OR REPLACE para criar ou atualizar
   // Se increment for negativo, decrementar (mas não deixar negativo)
   const incrementValue = increment;
-  // PostgreSQL precisa qualificar a coluna com o nome da tabela no ON CONFLICT
+  // SQLite não tem MAX() para comparação, usar CASE WHEN
   const updateExpression = increment > 0 
-    ? `${fieldToUpdate} = campaign_stats.${fieldToUpdate} + ${incrementValue}`
-    : `${fieldToUpdate} = CASE WHEN (campaign_stats.${fieldToUpdate} + ${incrementValue}) < 0 THEN 0 ELSE (campaign_stats.${fieldToUpdate} + ${incrementValue}) END`;
+    ? `${fieldToUpdate} = ${fieldToUpdate} + ${incrementValue}`
+    : `${fieldToUpdate} = CASE WHEN (${fieldToUpdate} + ${incrementValue}) < 0 THEN 0 ELSE (${fieldToUpdate} + ${incrementValue}) END`;
   
   const sql = `INSERT INTO campaign_stats (campanha, campanha_id, conjunto, conjunto_id, anuncio, anuncio_id, placement, site_source, ${fieldToUpdate}, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(campanha, conjunto, anuncio) 
                DO UPDATE SET ${updateExpression}, 
-                             campanha_id = COALESCE($11, campaign_stats.campanha_id),
-                             conjunto_id = COALESCE($12, campaign_stats.conjunto_id),
-                             anuncio_id = COALESCE($13, campaign_stats.anuncio_id),
-                             placement = COALESCE($14, campaign_stats.placement),
-                             site_source = COALESCE($15, campaign_stats.site_source),
-                             updated_at = $16`;
+                             campanha_id = COALESCE(?, campanha_id),
+                             conjunto_id = COALESCE(?, conjunto_id),
+                             anuncio_id = COALESCE(?, anuncio_id),
+                             placement = COALESCE(?, placement),
+                             site_source = COALESCE(?, site_source),
+                             updated_at = ?`;
   
   const initialValue = increment > 0 ? increment : 0;
   
-  db.query(sql, [campanhaValue, campanhaIdValue, conjuntoValue, conjuntoIdValue, anuncioValue, anuncioIdValue, placementValue, siteSourceValue, initialValue, brazilDateTime,
+  db.run(sql, [campanhaValue, campanhaIdValue, conjuntoValue, conjuntoIdValue, anuncioValue, anuncioIdValue, placementValue, siteSourceValue, initialValue, brazilDateTime,
                campanhaIdValue, conjuntoIdValue, anuncioIdValue, placementValue, siteSourceValue, brazilDateTime], (err) => {
     if (err) {
       console.error('❌ Erro ao atualizar estatísticas:', err.message);
@@ -619,7 +723,7 @@ function processPostback(req, res, notificationType) {
     // Se tiver apenas offer_id, SEMPRE criar novo (mesmo offer_id pode ter múltiplos leads)
     if (lead_id) {
       // Verificar se já existe lead com este lead_id
-      dbGet('SELECT id, notification_type, offer_id, lead_id FROM conversions WHERE lead_id = ? LIMIT 1', 
+      db.get('SELECT id, notification_type, offer_id, lead_id FROM conversions WHERE lead_id = ? LIMIT 1', 
         [lead_id], (err, existingLead) => {
           if (err) {
             console.error('❌ Erro ao verificar lead_id existente:', err.message);
@@ -633,7 +737,7 @@ function processPostback(req, res, notificationType) {
             
             // Buscar categoria do produto se houver offer_id
             const finalOfferId = offer_id || existingLead.offer_id;
-            dbGet('SELECT nome_conta FROM produtos WHERE offer_id = ?', [finalOfferId], (errProd, produto) => {
+            db.get('SELECT nome_conta FROM produtos WHERE offer_id = ?', [finalOfferId], (errProd, produto) => {
               const categoriaAtual = produto ? produto.nome_conta : null;
               
               const updateSql = `UPDATE conversions 
@@ -644,7 +748,7 @@ function processPostback(req, res, notificationType) {
                                     categoria = COALESCE(?, categoria)
                                 WHERE id = ?`;
               
-              dbRun(updateSql, [
+              db.run(updateSql, [
                 notificationType,
                 status || null,
                 payout ? parseFloat(payout) : null,
@@ -701,7 +805,7 @@ function processPostback(req, res, notificationType) {
                         created_at DESC 
                       LIMIT 1`;
     
-    dbGet(checkSql, [
+    db.get(checkSql, [
       lead_id, lead_id, // Para lead_id (primeira condição)
       offer_id, offer_id, // Para offer_id (segunda condição)
       sub1_value, campanha_final, conjunto_final, anuncio_final, // hierarquia (terceira condição)
@@ -722,7 +826,7 @@ function processPostback(req, res, notificationType) {
         
         // Buscar categoria do produto se houver offer_id
         const finalOfferId = offer_id || existingLead.offer_id;
-        dbGet('SELECT nome_conta FROM produtos WHERE offer_id = ?', [finalOfferId], (errProd, produto) => {
+        db.get('SELECT nome_conta FROM produtos WHERE offer_id = ?', [finalOfferId], (errProd, produto) => {
           const categoriaAtual = produto ? produto.nome_conta : null;
           
           // CRÍTICO: NÃO atualizar a data - manter a data original do lead
@@ -738,7 +842,7 @@ function processPostback(req, res, notificationType) {
                                 -- date NÃO é atualizado - mantém a data original
                             WHERE id = ?`;
           
-          dbRun(updateSql, [
+          db.run(updateSql, [
             notificationType,
             status || null,
             payout ? parseFloat(payout) : null,
@@ -796,13 +900,13 @@ function processPostback(req, res, notificationType) {
   // Função para inserir novo lead
   function insertNewLead() {
     // Buscar categoria do produto se houver offer_id
-    dbGet('SELECT nome_conta FROM produtos WHERE offer_id = ?', [offer_id], (errProd, produto) => {
+    db.get('SELECT nome_conta FROM produtos WHERE offer_id = ?', [offer_id], (errProd, produto) => {
       const categoriaProduto = produto ? produto.nome_conta : null;
       
       const sql = `INSERT INTO conversions (sub_id1, sub_id2, sub_id3, sub_id4, sub_id5, sub_id6, sub_id7, sub_id8, campanha, conjunto, anuncio, offer_id, lead_id, categoria, status, payout, date, notification_type, utm_source, utm_medium, created_at) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
       
-      dbRun(sql, [
+      db.run(sql, [
         sub1_value,        // sub_id1 = valor fixo (ex: Jeff-10x5962)
         ad_id,             // sub_id2 = ad.id (se disponível)
         campaign_id,       // sub_id3 = campaign.id (se disponível)
@@ -830,7 +934,7 @@ function processPostback(req, res, notificationType) {
       return res.status(500).json({ success: false, error: 'Erro ao salvar dados' });
     }
     
-    console.log('✅ Dados salvos com sucesso (ID:', this.lastID || 'N/A' + ')');
+    console.log('✅ Dados salvos com sucesso (ID:', this.lastID + ')');
     console.log('   Hierarquia salva:');
     console.log('     Campanha:', campanha_final || 'N/A');
     console.log('     Conjunto:', conjunto_final || 'N/A');
@@ -839,7 +943,7 @@ function processPostback(req, res, notificationType) {
     // Atualizar estatísticas por campanha (usando hierarquia: campanha > conjunto > anuncio)
     updateCampaignStats(campanha_final, campaign_id, conjunto_final, adset_id, anuncio_final, ad_id, placement, utm_source, notificationType);
     
-      res.json({ success: true, id: this.lastID || null });
+      res.json({ success: true, id: this.lastID });
     });
     });
   }
@@ -946,9 +1050,9 @@ app.get('/api/conversions', (req, res) => {
     sql += ` WHERE ${conditions.join(' AND ')}`;
   }
 
-  sql += ` ORDER BY COALESCE(date, created_at::text) DESC, created_at DESC`;
+  sql += ` ORDER BY COALESCE(date, created_at) DESC, created_at DESC`;
   
-  dbAll(sql, params, (err, rows) => {
+  db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('Erro ao buscar conversões:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados' });
@@ -1044,7 +1148,7 @@ app.get('/api/extrato', (req, res) => {
 
   sql += ` ORDER BY created_at DESC, id DESC`;
   
-  dbAll(sql, params, (err, rows) => {
+  db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar extrato:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
@@ -1098,7 +1202,7 @@ app.get('/api/hierarchy', (req, res) => {
 
   // Debug: Verificar se o lead específico está no banco
   if (targetDate) {
-    dbAll(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id FROM conversions WHERE (campanha LIKE '%Camp24%' OR sub_id6 LIKE '%Camp24%' OR sub_id3 LIKE '%Camp24%' OR campanha LIKE '%121CBO%' OR sub_id6 LIKE '%121CBO%' OR sub_id3 LIKE '%121CBO%') ORDER BY created_at DESC LIMIT 10`, 
+    db.all(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id FROM conversions WHERE (campanha LIKE '%Camp24%' OR sub_id6 LIKE '%Camp24%' OR sub_id3 LIKE '%Camp24%' OR campanha LIKE '%121CBO%' OR sub_id6 LIKE '%121CBO%' OR sub_id3 LIKE '%121CBO%') ORDER BY created_at DESC LIMIT 10`, 
       [], (errDebug, debugData) => {
         if (!errDebug && debugData.length > 0) {
           console.log(`🔍 [DEBUG] Encontrados ${debugData.length} registros Camp24 no banco (todas as datas):`);
@@ -1133,7 +1237,7 @@ app.get('/api/hierarchy', (req, res) => {
             c.lead_id,
             'unique_' || CAST(c.id AS TEXT)
           ) as unique_id,
-          COALESCE(c.date, SUBSTRING(c.created_at::text, 1, 10)) as data_original
+          COALESCE(c.date, substr(c.created_at, 1, 10)) as data_original
         FROM conversions c
         WHERE c.id = (
           SELECT c2.id
@@ -1155,8 +1259,8 @@ app.get('/api/hierarchy', (req, res) => {
           unique_id
         FROM leads_originais
         WHERE (
-          (date IS NOT NULL AND SUBSTRING(date, 1, 10) = ?)
-          OR (date IS NULL AND SUBSTRING(created_at::text, 1, 10) = ?)
+          (date IS NOT NULL AND substr(date, 1, 10) = ?)
+          OR (date IS NULL AND substr(created_at, 1, 10) = ?)
         )
         ${offerIdFilter ? ' AND offer_id = ?' : ''}
         ${categoriaFilter ? ' AND categoria = ?' : ''}
@@ -1263,7 +1367,7 @@ app.get('/api/hierarchy', (req, res) => {
   
   // Query de diagnóstico ANTES da query principal
   if (targetDate) {
-    dbGet(`SELECT COUNT(*) as total, COUNT(DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT))) as unique_leads FROM conversions WHERE (SUBSTRING(date, 1, 10) = ? OR (date IS NULL AND SUBSTRING(created_at::text, 1, 10) = ?))`, 
+    db.get(`SELECT COUNT(*) as total, COUNT(DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT))) as unique_leads FROM conversions WHERE (substr(date, 1, 10) = ? OR (date IS NULL AND substr(created_at, 1, 10) = ?))`, 
       [targetDate, targetDate], (errDiag, diag) => {
         if (!errDiag) {
           console.log(`🔍 Diagnóstico: ${diag.total} registros totais, ${diag.unique_leads} leads únicos na data ${targetDate}`);
@@ -1271,7 +1375,7 @@ app.get('/api/hierarchy', (req, res) => {
       });
     
     // Verificar se há leads da campanha específica (Camp24)
-    dbAll(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id, COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE (SUBSTRING(date, 1, 10) = ? OR (date IS NULL AND SUBSTRING(created_at::text, 1, 10) = ?)) AND (campanha LIKE '%Camp24%' OR sub_id6 LIKE '%Camp24%' OR sub_id3 LIKE '%Camp24%' OR campanha LIKE '%121CBO%' OR sub_id6 LIKE '%121CBO%' OR sub_id3 LIKE '%121CBO%') LIMIT 10`, 
+    db.all(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id, COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE (substr(date, 1, 10) = ? OR (date IS NULL AND substr(created_at, 1, 10) = ?)) AND (campanha LIKE '%Camp24%' OR sub_id6 LIKE '%Camp24%' OR sub_id3 LIKE '%Camp24%' OR campanha LIKE '%121CBO%' OR sub_id6 LIKE '%121CBO%' OR sub_id3 LIKE '%121CBO%') LIMIT 10`, 
       [targetDate, targetDate], (errCamp, campData) => {
         if (!errCamp && campData.length > 0) {
           console.log(`🔍 Diagnóstico Camp24: ${campData.length} registros encontrados para Camp24 na data ${targetDate}`);
@@ -1284,7 +1388,7 @@ app.get('/api/hierarchy', (req, res) => {
       });
   }
   
-  dbAll(sql, params, (err, rows) => {
+  db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar hierarquia:', err.message);
       console.error('SQL completo:', sql);
@@ -1307,13 +1411,13 @@ app.get('/api/hierarchy', (req, res) => {
         console.log(`📋 Todas as campanhas encontradas:`, rows.map(r => r.campanha).filter(c => c).slice(0, 20));
         // Verificar dados brutos e unique_ids
         if (targetDate) {
-          dbAll(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id, COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE (SUBSTRING(date, 1, 10) = ? OR (date IS NULL AND SUBSTRING(created_at::text, 1, 10) = ?)) AND (campanha LIKE '%Camp24%' OR sub_id6 LIKE '%Camp24%' OR sub_id3 LIKE '%Camp24%' OR campanha LIKE '%121CBO%' OR sub_id6 LIKE '%121CBO%') LIMIT 5`, 
+          db.all(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id, COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE (substr(date, 1, 10) = ? OR (date IS NULL AND substr(created_at, 1, 10) = ?)) AND (campanha LIKE '%Camp24%' OR sub_id6 LIKE '%Camp24%' OR sub_id3 LIKE '%Camp24%' OR campanha LIKE '%121CBO%' OR sub_id6 LIKE '%121CBO%') LIMIT 5`, 
             [targetDate, targetDate], (errRaw, rawData) => {
               if (!errRaw && rawData.length > 0) {
                 console.log(`🔍 Dados brutos encontrados para Camp24:`, rawData);
                 // Verificar se esses unique_ids estão em leads_do_dia
                 const uniqueIds = rawData.map(r => r.unique_id);
-                dbAll(`SELECT DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE (SUBSTRING(date, 1, 10) = ? OR (date IS NULL AND SUBSTRING(created_at::text, 1, 10) = ?))`, 
+                db.all(`SELECT DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE (substr(date, 1, 10) = ? OR (date IS NULL AND substr(created_at, 1, 10) = ?))`, 
                   [targetDate, targetDate], (errLeads, leadsDoDia) => {
                     if (!errLeads) {
                       const leadsUniqueIds = leadsDoDia.map(l => l.unique_id);
@@ -1337,7 +1441,7 @@ app.get('/api/hierarchy', (req, res) => {
       console.log('⚠️ Nenhuma campanha encontrada. Verificando se há leads na data...');
       // Query de diagnóstico
         if (targetDate) {
-          dbGet(`SELECT COUNT(*) as total FROM conversions WHERE (SUBSTRING(date, 1, 10) = ? OR (date IS NULL AND SUBSTRING(created_at::text, 1, 10) = ?))`,
+          db.get(`SELECT COUNT(*) as total FROM conversions WHERE (substr(date, 1, 10) = ? OR (date IS NULL AND substr(created_at, 1, 10) = ?))`,
             [targetDate, targetDate], (err2, diag) => {
             if (!err2) {
               console.log(`🔍 Diagnóstico: ${diag.total} registros totais encontrados na data ${targetDate}`);
@@ -1501,7 +1605,7 @@ app.get('/api/stats', (req, res) => {
   if (dateFilter) {
     const normalizedDate = normalizeDate(dateFilter);
     if (normalizedDate) {
-      dateCondition = `AND (original.date IS NOT NULL AND SUBSTRING(original.date, 1, 10) = ? OR (original.date IS NULL AND SUBSTRING(original.created_at::text, 1, 10) = ?))`;
+      dateCondition = `AND (original.date IS NOT NULL AND substr(original.date, 1, 10) = ? OR (original.date IS NULL AND substr(original.created_at, 1, 10) = ?))`;
       allParams.push(normalizedDate, normalizedDate);
     }
   } else if (startDate || endDate) {
@@ -1509,14 +1613,14 @@ app.get('/api/stats', (req, res) => {
     if (startDate) {
       const normalizedStart = normalizeDate(startDate);
       if (normalizedStart) {
-        dateConditions.push(`(original.date IS NOT NULL AND SUBSTRING(original.date, 1, 10) >= ? OR (original.date IS NULL AND SUBSTRING(original.created_at::text, 1, 10) >= ?))`);
+        dateConditions.push(`(original.date IS NOT NULL AND substr(original.date, 1, 10) >= ? OR (original.date IS NULL AND substr(original.created_at, 1, 10) >= ?))`);
         allParams.push(normalizedStart, normalizedStart);
       }
     }
     if (endDate) {
       const normalizedEnd = normalizeDate(endDate);
       if (normalizedEnd) {
-        dateConditions.push(`(original.date IS NOT NULL AND SUBSTRING(original.date, 1, 10) <= ? OR (original.date IS NULL AND SUBSTRING(original.created_at::text, 1, 10) <= ?))`);
+        dateConditions.push(`(original.date IS NOT NULL AND substr(original.date, 1, 10) <= ? OR (original.date IS NULL AND substr(original.created_at, 1, 10) <= ?))`);
         allParams.push(normalizedEnd, normalizedEnd);
       }
     }
@@ -1600,7 +1704,7 @@ app.get('/api/stats', (req, res) => {
     ${categoriaFilter ? 'AND latest.categoria = ?' : ''}
   `;
   
-  dbGet(sql, allParams, (err, row) => {
+  db.get(sql, allParams, (err, row) => {
     if (err) {
       console.error('❌ Erro ao buscar estatísticas:', err.message);
       console.error('SQL:', sql);
@@ -1688,7 +1792,7 @@ app.get('/api/leads/:date', (req, res) => {
     ORDER BY created_at DESC
   `;
   
-  dbAll(sql, [normalizedDate, normalizedDate], (err, rows) => {
+  db.all(sql, [normalizedDate, normalizedDate], (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar leads do dia:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
@@ -1731,7 +1835,7 @@ app.get('/api/conversions/dates', (req, res) => {
     ORDER BY date DESC
   `;
   
-  dbAll(sql, [], (err, rows) => {
+  db.all(sql, [], (err, rows) => {
     if (err) {
       console.error('Erro ao buscar datas:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados' });
@@ -1751,7 +1855,7 @@ app.get('/api/campaign-stats', (req, res) => {
 
   const sql = `SELECT * FROM campaign_stats ORDER BY campanha, conjunto, anuncio`;
   
-  dbAll(sql, [], (err, rows) => {
+  db.all(sql, [], (err, rows) => {
     if (err) {
       console.error('Erro ao buscar estatísticas:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados' });
@@ -1780,7 +1884,7 @@ app.get('/api/diagnostic/hierarchy-step-by-step', (req, res) => {
   };
 
   // ETAPA 1: Verificar se o lead existe no banco
-  dbAll(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id, COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE lead_id = ? OR id = 91`, 
+  db.all(`SELECT id, campanha, sub_id6, sub_id3, date, created_at, notification_type, lead_id, COALESCE(lead_id, 'unique_' || CAST(id AS TEXT)) as unique_id FROM conversions WHERE lead_id = ? OR id = 91`, 
     [leadId], (err1, step1) => {
       if (err1) {
         return res.status(500).json({ error: 'Erro na etapa 1', details: err1.message });
@@ -1789,7 +1893,7 @@ app.get('/api/diagnostic/hierarchy-step-by-step', (req, res) => {
       console.log(`✅ ETAPA 1: Lead encontrado no banco:`, step1);
 
       // ETAPA 2: Verificar se o lead está em leads_do_dia
-      dbAll(`
+      db.all(`
         SELECT DISTINCT
           COALESCE(c.lead_id, 'unique_' || CAST(c.id AS TEXT)) as unique_id
         FROM conversions c
@@ -1806,7 +1910,7 @@ app.get('/api/diagnostic/hierarchy-step-by-step', (req, res) => {
         console.log(`✅ ETAPA 2: Lead em leads_do_dia:`, step2);
 
         // ETAPA 3: Verificar se o lead está em todas_conversoes
-        dbAll(`
+        db.all(`
           SELECT 
             c.*,
             COALESCE(c.lead_id, 'unique_' || CAST(c.id AS TEXT)) as unique_id,
@@ -1829,7 +1933,7 @@ app.get('/api/diagnostic/hierarchy-step-by-step', (req, res) => {
           // ETAPA 4: Verificar se o lead está em conversoes_filtradas
           if (step2.length > 0 && step3.length > 0) {
             const uniqueId = step2[0].unique_id;
-            dbAll(`
+            db.all(`
               SELECT tc.*
               FROM (
                 SELECT 
@@ -1862,7 +1966,7 @@ app.get('/api/diagnostic/hierarchy-step-by-step', (req, res) => {
 
               // ETAPA 5: Verificar se o lead está em latest_conversoes
               if (step4.length > 0) {
-                dbAll(`
+                db.all(`
                   SELECT cf.*
                   FROM (
                     SELECT tc.*
@@ -1922,7 +2026,7 @@ app.get('/api/diagnostic/hierarchy-step-by-step', (req, res) => {
                   console.log(`✅ ETAPA 5: Lead em latest_conversoes:`, step5);
 
                   // ETAPA 6: Verificar resultado final da query completa
-                  dbAll(`
+                  db.all(`
                     WITH leads_do_dia AS (
                       SELECT DISTINCT
                         COALESCE(c.lead_id, 'unique_' || CAST(c.id AS TEXT)) as unique_id
@@ -2054,7 +2158,7 @@ app.get('/api/diagnostic/campaign/:campaignName', (req, res) => {
   
   const searchPattern = `%${campaignName}%`;
   
-  dbAll(sql, [today, today, searchPattern, searchPattern, searchPattern], (err, rows) => {
+  db.all(sql, [today, today, searchPattern, searchPattern, searchPattern], (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar campanha:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
@@ -2124,13 +2228,13 @@ app.get('/api/diagnostic/today', (req, res) => {
     )
   `;
 
-  dbGet(sqlAll, [today, today], (err, allStats) => {
+  db.get(sqlAll, [today, today], (err, allStats) => {
     if (err) {
       console.error('❌ Erro ao buscar estatísticas:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
     }
 
-    dbGet(sqlUnique, [today, today, today, today], (err2, uniqueStats) => {
+    db.get(sqlUnique, [today, today, today, today], (err2, uniqueStats) => {
       if (err2) {
         console.error('❌ Erro ao buscar leads únicos:', err2.message);
         return res.status(500).json({ error: 'Erro ao buscar leads únicos', details: err2.message });
@@ -2156,7 +2260,7 @@ app.get('/api/diagnostic/today', (req, res) => {
         WHERE (date(date) = date(?) OR (date IS NULL AND date(created_at) = date(?)))
       `;
 
-      dbGet(sqlByType, [today, today], (err4, byType) => {
+      db.get(sqlByType, [today, today], (err4, byType) => {
         if (err4) {
           console.error('❌ Erro ao buscar contagem por tipo:', err4.message);
         }
@@ -2169,9 +2273,9 @@ app.get('/api/diagnostic/today', (req, res) => {
               'unique_' || CAST(id AS TEXT)
             ) as unique_id,
             COUNT(*) as count,
-            STRING_AGG(DISTINCT notification_type, ', ') as tipos,
-            STRING_AGG(id::text, ', ') as ids,
-            STRING_AGG(DISTINCT offer_id, ', ') as offer_ids
+            GROUP_CONCAT(DISTINCT notification_type) as tipos,
+            GROUP_CONCAT(id) as ids,
+            GROUP_CONCAT(DISTINCT offer_id) as offer_ids
           FROM conversions
           WHERE (date(date) = date(?) OR (date IS NULL AND date(created_at) = date(?)))
           GROUP BY unique_id
@@ -2180,12 +2284,12 @@ app.get('/api/diagnostic/today', (req, res) => {
           LIMIT 20
         `;
 
-        dbAll(sqlAllUniqueIds, [today, today], (err5, duplicates) => {
+        db.all(sqlAllUniqueIds, [today, today], (err5, duplicates) => {
           if (err5) {
             console.error('❌ Erro ao buscar duplicatas:', err5.message);
           }
 
-          dbAll(sqlRecent, [today, today], (err3, recent) => {
+          db.all(sqlRecent, [today, today], (err3, recent) => {
             if (err3) {
               console.error('❌ Erro ao buscar postbacks recentes:', err3.message);
             }
@@ -2228,7 +2332,7 @@ app.get('/api/produtos', (req, res) => {
     return res.status(500).json({ error: 'Banco de dados não disponível' });
   }
 
-  dbAll('SELECT * FROM produtos ORDER BY nome_produto', [], (err, rows) => {
+  db.all('SELECT * FROM produtos ORDER BY nome_produto', [], (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar produtos:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar produtos' });
@@ -2244,7 +2348,7 @@ app.get('/api/contas', (req, res) => {
   }
 
   // Buscar contas cadastradas no campo "Nome da Conta" dos produtos
-  dbAll('SELECT DISTINCT nome_conta as conta FROM produtos WHERE nome_conta IS NOT NULL AND nome_conta != \'\' ORDER BY nome_conta', [], (err, rows) => {
+  db.all('SELECT DISTINCT nome_conta as conta FROM produtos WHERE nome_conta IS NOT NULL AND nome_conta != "" ORDER BY nome_conta', [], (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar contas:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar contas' });
@@ -2267,7 +2371,7 @@ app.post('/api/produtos', (req, res) => {
 
   const brazilDateTime = getBrazilDateTimeSQL();
   
-  dbRun(
+  db.run(
     'INSERT INTO produtos (nome_produto, offer_id, nome_conta, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
     [nome_produto, offer_id, nome_conta, brazilDateTime, brazilDateTime],
     function(err) {
@@ -2276,7 +2380,7 @@ app.post('/api/produtos', (req, res) => {
         return res.status(500).json({ error: 'Erro ao criar produto' });
       }
       console.log(`✅ Produto criado: ${nome_produto} (Offer ID: ${offer_id})`);
-      res.json({ success: true, id: this.lastID || null });
+      res.json({ success: true, id: this.lastID });
     }
   );
 });
@@ -2296,7 +2400,7 @@ app.put('/api/produtos/:id', (req, res) => {
 
   const brazilDateTime = getBrazilDateTimeSQL();
   
-  dbRun(
+  db.run(
     'UPDATE produtos SET nome_produto = ?, offer_id = ?, nome_conta = ?, updated_at = ? WHERE id = ?',
     [nome_produto, offer_id, nome_conta, brazilDateTime, id],
     function(err) {
@@ -2321,7 +2425,7 @@ app.delete('/api/produtos/:id', (req, res) => {
 
   const { id } = req.params;
   
-  dbRun('DELETE FROM produtos WHERE id = ?', [id], function(err) {
+  db.run('DELETE FROM produtos WHERE id = ?', [id], function(err) {
     if (err) {
       console.error('❌ Erro ao deletar produto:', err.message);
       return res.status(500).json({ error: 'Erro ao deletar produto' });
@@ -2341,14 +2445,14 @@ app.delete('/api/clear-all', (req, res) => {
   }
 
   // Limpar tabela conversions
-  dbRun('DELETE FROM conversions', (err) => {
+  db.run('DELETE FROM conversions', (err) => {
     if (err) {
       console.error('❌ Erro ao limpar conversions:', err.message);
       return res.status(500).json({ error: 'Erro ao limpar dados' });
     }
     
     // Limpar tabela campaign_stats
-    dbRun('DELETE FROM campaign_stats', (err2) => {
+    db.run('DELETE FROM campaign_stats', (err2) => {
       if (err2) {
         console.error('❌ Erro ao limpar campaign_stats:', err2.message);
         return res.status(500).json({ error: 'Erro ao limpar estatísticas' });
@@ -2367,14 +2471,14 @@ app.get('/api/clear-all', (req, res) => {
   }
 
   // Limpar tabela conversions
-  dbRun('DELETE FROM conversions', (err) => {
+  db.run('DELETE FROM conversions', (err) => {
     if (err) {
       console.error('❌ Erro ao limpar conversions:', err.message);
       return res.status(500).json({ error: 'Erro ao limpar dados' });
     }
     
     // Limpar tabela campaign_stats
-    dbRun('DELETE FROM campaign_stats', (err2) => {
+    db.run('DELETE FROM campaign_stats', (err2) => {
       if (err2) {
         console.error('❌ Erro ao limpar campaign_stats:', err2.message);
         return res.status(500).json({ error: 'Erro ao limpar estatísticas' });
@@ -2429,7 +2533,7 @@ app.get('/api/metricas/sub2', (req, res) => {
 
   sql += ` GROUP BY sub_id2 ORDER BY total_leads DESC`;
 
-  dbAll(sql, params, (err, rows) => {
+  db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar métricas por sub2:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
@@ -2464,7 +2568,7 @@ app.get('/api/metricas/sub2', (req, res) => {
       }
     }
 
-    dbGet(sqlTotais, paramsTotais, (errTotais, totais) => {
+    db.get(sqlTotais, paramsTotais, (errTotais, totais) => {
       if (errTotais) {
         console.error('❌ Erro ao buscar totais:', errTotais.message);
         return res.status(500).json({ error: 'Erro ao buscar totais', details: errTotais.message });
@@ -2511,7 +2615,7 @@ app.get('/api/metricas/horarios', (req, res) => {
   const endDate = req.query.endDate || null;
 
   let sql = `SELECT 
-    SUBSTRING(created_at::text, 12, 2) as hora,
+    substr(created_at, 12, 2) as hora,
     COUNT(*) as total_leads,
     COUNT(DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT))) as leads_unicos
   FROM conversions
@@ -2536,7 +2640,7 @@ app.get('/api/metricas/horarios', (req, res) => {
 
   sql += ` GROUP BY hora ORDER BY hora ASC`;
 
-  dbAll(sql, params, (err, rows) => {
+  db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar horários:', err.message);
       return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
@@ -2619,7 +2723,7 @@ app.listen(PORT, () => {
 
 // Fechar banco ao encerrar aplicação
 process.on('SIGINT', () => {
-  db.end((err) => {
+  db.close((err) => {
     if (err) {
       console.error(err.message);
     }
