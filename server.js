@@ -2499,9 +2499,18 @@ app.get('/api/metricas/sub2', (req, res) => {
   const dateFilter = req.query.date || null;
   const startDate = req.query.startDate || null;
   const endDate = req.query.endDate || null;
+  const offerIdFilter = req.query.offerId || null;
+
+  console.log(`📊 [MÉTRICAS SUB2] Filtros recebidos:`, {
+    dateFilter,
+    startDate,
+    endDate,
+    offerIdFilter
+  });
 
   // IMPORTANTE: valor_total deve ser apenas das conversões (leads aprovados)
   // Usar COUNT(DISTINCT) para contar leads únicos, não todos os registros
+  // Quando filtrar por offer_id, mostrar APENAS os sub2 que têm registros com aquele offer_id
   let sql = `SELECT 
     sub_id2 as sub2,
     COUNT(DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT))) as total_leads,
@@ -2516,6 +2525,15 @@ app.get('/api/metricas/sub2', (req, res) => {
   `;
 
   const params = [];
+
+  // Filtro por Offer ID - IMPORTANTE: filtrar apenas pela oferta selecionada
+  // Isso garante que só mostra os sub2 (páginas) que pertencem a essa oferta específica
+  if (offerIdFilter) {
+    sql += ` AND offer_id = ?`;
+    params.push(offerIdFilter.trim()); // Remove espaços em branco
+    console.log(`🔍 [MÉTRICAS SUB2] Aplicando filtro por offer_id: "${offerIdFilter}"`);
+    console.log(`🔍 [MÉTRICAS SUB2] Isso vai mostrar APENAS os sub2 (páginas) da oferta ${offerIdFilter}`);
+  }
 
   if (dateFilter) {
     sql += ` AND (date(date) = date(?) OR (date IS NULL AND date(created_at) = date(?)))`;
@@ -2533,15 +2551,42 @@ app.get('/api/metricas/sub2', (req, res) => {
 
   sql += ` GROUP BY sub_id2 ORDER BY total_leads DESC`;
 
+  console.log(`📝 [MÉTRICAS SUB2] SQL executado:`, sql);
+  console.log(`📝 [MÉTRICAS SUB2] Parâmetros:`, params);
+
   db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('❌ Erro ao buscar métricas por sub2:', err.message);
+      console.error('SQL:', sql);
+      console.error('Params:', params);
       return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
+    }
+
+    console.log(`✅ [MÉTRICAS SUB2] ${rows.length} grupos de sub2 encontrados`);
+    
+    // Debug: se houver filtro por offer_id, verificar se os sub2 retornados realmente pertencem a essa oferta
+    if (offerIdFilter && rows.length > 0) {
+      const sub2List = rows.map(r => r.sub2).join(', ');
+      console.log(`📋 [MÉTRICAS SUB2] Sub2 encontrados para oferta "${offerIdFilter}": ${sub2List}`);
+      
+      // Verificar se há algum sub2 que não deveria estar aqui (debug)
+      db.all(`SELECT DISTINCT sub_id2, offer_id FROM conversions WHERE sub_id2 IN (${rows.map(() => '?').join(',')}) AND offer_id IS NOT NULL AND offer_id != ''`, 
+        rows.map(r => r.sub2), (errDebug, debugRows) => {
+          if (!errDebug) {
+            const sub2ComOfferIdDiferente = debugRows.filter(r => r.offer_id !== offerIdFilter.trim());
+            if (sub2ComOfferIdDiferente.length > 0) {
+              console.warn(`⚠️ [MÉTRICAS SUB2] ATENÇÃO: Alguns sub2 têm offer_id diferente:`, sub2ComOfferIdDiferente);
+            } else {
+              console.log(`✅ [MÉTRICAS SUB2] Todos os sub2 retornados pertencem à oferta "${offerIdFilter}"`);
+            }
+          }
+        });
     }
 
     // Buscar totais gerais
     // IMPORTANTE: valor_total deve ser apenas das conversões (leads aprovados)
     // Usar COUNT(DISTINCT) para contar leads únicos
+    // Quando filtrar por offer_id, calcular totais APENAS dessa oferta
     let sqlTotais = `SELECT 
       COUNT(DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT))) as total_leads,
       SUM(CASE WHEN notification_type = 'lead' THEN 1 ELSE 0 END) as leads,
@@ -2554,6 +2599,14 @@ app.get('/api/metricas/sub2', (req, res) => {
     `;
 
     const paramsTotais = [];
+    
+    // Filtro por Offer ID nos totais também - garantir que só conta registros dessa oferta
+    if (offerIdFilter) {
+      sqlTotais += ` AND offer_id = ?`;
+      paramsTotais.push(offerIdFilter.trim()); // Remove espaços em branco
+      console.log(`🔍 [MÉTRICAS SUB2] Totais também filtrados por offer_id: "${offerIdFilter}"`);
+    }
+    
     if (dateFilter) {
       sqlTotais += ` AND (date(date) = date(?) OR (date IS NULL AND date(created_at) = date(?)))`;
       paramsTotais.push(dateFilter, dateFilter);
@@ -2568,11 +2621,22 @@ app.get('/api/metricas/sub2', (req, res) => {
       }
     }
 
+    console.log(`📝 [MÉTRICAS SUB2] SQL Totais:`, sqlTotais);
+    console.log(`📝 [MÉTRICAS SUB2] Parâmetros Totais:`, paramsTotais);
+
     db.get(sqlTotais, paramsTotais, (errTotais, totais) => {
       if (errTotais) {
         console.error('❌ Erro ao buscar totais:', errTotais.message);
+        console.error('SQL Totais:', sqlTotais);
+        console.error('Params Totais:', paramsTotais);
         return res.status(500).json({ error: 'Erro ao buscar totais', details: errTotais.message });
       }
+
+      console.log(`✅ [MÉTRICAS SUB2] Totais calculados:`, {
+        totalLeads: totais.total_leads || 0,
+        conversoes: totais.conversoes || 0,
+        offerIdFilter: offerIdFilter || 'nenhum'
+      });
 
       // Formatar os dados
       const metricas = rows.map(row => ({
@@ -2604,6 +2668,75 @@ app.get('/api/metricas/sub2', (req, res) => {
   });
 });
 
+// API de debug: listar todos os offer_ids únicos no banco
+app.get('/api/debug/offer-ids', (req, res) => {
+  if (!db) {
+    return res.status(500).json({ error: 'Banco de dados não disponível' });
+  }
+
+  db.all(`SELECT DISTINCT offer_id, COUNT(*) as total FROM conversions WHERE offer_id IS NOT NULL AND offer_id != '' GROUP BY offer_id ORDER BY total DESC`, [], (err, rows) => {
+    if (err) {
+      console.error('❌ Erro ao buscar offer_ids:', err.message);
+      return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
+    }
+
+    res.json({ 
+      success: true, 
+      offerIds: rows.map(r => ({
+        offer_id: r.offer_id,
+        total: r.total
+      }))
+    });
+  });
+});
+
+// API de debug: listar quais sub2 pertencem a cada offer_id
+app.get('/api/debug/offer-sub2', (req, res) => {
+  if (!db) {
+    return res.status(500).json({ error: 'Banco de dados não disponível' });
+  }
+
+  const offerIdFilter = req.query.offerId || null;
+
+  let sql = `SELECT DISTINCT offer_id, sub_id2, COUNT(*) as total 
+             FROM conversions 
+             WHERE offer_id IS NOT NULL AND offer_id != '' 
+             AND sub_id2 IS NOT NULL AND sub_id2 != ''`;
+  
+  const params = [];
+  if (offerIdFilter) {
+    sql += ` AND offer_id = ?`;
+    params.push(offerIdFilter.trim());
+  }
+  
+  sql += ` GROUP BY offer_id, sub_id2 ORDER BY offer_id, total DESC`;
+
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('❌ Erro ao buscar offer_id -> sub2:', err.message);
+      return res.status(500).json({ error: 'Erro ao buscar dados', details: err.message });
+    }
+
+    // Agrupar por offer_id
+    const grouped = {};
+    rows.forEach(row => {
+      if (!grouped[row.offer_id]) {
+        grouped[row.offer_id] = [];
+      }
+      grouped[row.offer_id].push({
+        sub2: row.sub_id2,
+        total: row.total
+      });
+    });
+
+    res.json({ 
+      success: true, 
+      data: grouped,
+      message: offerIdFilter ? `Sub2 da oferta ${offerIdFilter}` : 'Todos os offer_id e seus sub2'
+    });
+  });
+});
+
 // API para buscar distribuição de leads por horário
 app.get('/api/metricas/horarios', (req, res) => {
   if (!db) {
@@ -2613,6 +2746,7 @@ app.get('/api/metricas/horarios', (req, res) => {
   const dateFilter = req.query.date || null;
   const startDate = req.query.startDate || null;
   const endDate = req.query.endDate || null;
+  const offerIdFilter = req.query.offerId || null;
 
   let sql = `SELECT 
     substr(created_at, 12, 2) as hora,
@@ -2623,6 +2757,12 @@ app.get('/api/metricas/horarios', (req, res) => {
   `;
 
   const params = [];
+
+  // Filtro por Offer ID
+  if (offerIdFilter) {
+    sql += ` AND offer_id = ?`;
+    params.push(offerIdFilter);
+  }
 
   if (dateFilter) {
     sql += ` AND (date(date) = date(?) OR (date IS NULL AND date(created_at) = date(?)))`;

@@ -32,9 +32,9 @@
                 </div>
             </div>
 
-            <!-- Filtros de Data e Taxa de Câmbio -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div class="flex gap-4 items-end">
+            <!-- Filtros de Data, Oferta e Taxa de Câmbio -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                <div class="flex flex-wrap gap-4 items-end">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Data Específica:</label>
                         <input type="date" id="dateFilter" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -54,7 +54,15 @@
                         🗑️ Limpar
                     </button>
                 </div>
-                <div class="flex gap-4 items-end">
+                <!-- Filtro de Oferta / Produto -->
+                <div class="flex flex-col gap-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Oferta / Produto:</label>
+                    <select id="offerFilter" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Todas as ofertas</option>
+                    </select>
+                    <p class="text-xs text-gray-500">Filtro por <code>offer_id</code>. Ex: selecionar apenas “Gota Africana”.</p>
+                </div>
+                <div class="flex gap-4 items-end justify-start lg:justify-end">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Taxa de Câmbio (USD → BRL):</label>
                         <input type="number" id="taxaCambio" step="0.01" value="5.38" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="5.38">
@@ -167,12 +175,19 @@
 
     <script>
         let charts = {};
-
         let dadosAtuais = null;
+        let produtosCache = [];
 
         // Carregar métricas ao carregar a página
         document.addEventListener('DOMContentLoaded', () => {
-            carregarMetricas();
+            carregarProdutos().then(() => {
+                carregarMetricas();
+            });
+            
+            // Recarregar métricas quando o filtro de oferta mudar
+            document.getElementById('offerFilter').addEventListener('change', () => {
+                carregarMetricas();
+            });
             
             // Atualizar valores quando taxa de câmbio ou valor gasto mudarem
             document.getElementById('taxaCambio').addEventListener('input', () => {
@@ -189,10 +204,32 @@
             });
         });
 
+        async function carregarProdutos() {
+            try {
+                const response = await fetch('/api/produtos');
+                const produtos = await response.json();
+                produtosCache = Array.isArray(produtos) ? produtos : [];
+
+                const select = document.getElementById('offerFilter');
+                // Limpar mantendo opção padrão
+                select.innerHTML = '<option value=\"\">Todas as ofertas</option>';
+
+                produtosCache.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.offer_id;
+                    opt.textContent = `${p.nome_produto || 'Sem nome'} (${p.offer_id})`;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('Erro ao carregar produtos:', err);
+            }
+        }
+
         function limparFiltros() {
             document.getElementById('dateFilter').value = '';
             document.getElementById('startDate').value = '';
             document.getElementById('endDate').value = '';
+            document.getElementById('offerFilter').value = '';
             carregarMetricas();
         }
 
@@ -212,6 +249,7 @@
             const dateFilter = document.getElementById('dateFilter').value;
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
+            const offerFilter = document.getElementById('offerFilter').value;
 
             if (dateFilter) {
                 params.append('date', dateFilter);
@@ -220,9 +258,28 @@
                 if (endDate) params.append('endDate', endDate);
             }
 
+            if (offerFilter) {
+                // Garantir que o valor está limpo (sem espaços)
+                const offerIdLimpo = offerFilter.trim();
+                params.append('offerId', offerIdLimpo);
+                console.log('🔍 [FRONTEND] Filtro de oferta aplicado:', offerIdLimpo);
+                console.log('🔍 [FRONTEND] Isso vai mostrar APENAS os sub2 (páginas) da oferta:', offerIdLimpo);
+            } else {
+                console.log('🔍 [FRONTEND] Sem filtro de oferta - mostrando todas as ofertas');
+            }
+
+            const url = `/api/metricas/sub2?${params.toString()}`;
+            console.log('📡 [FRONTEND] Fazendo requisição para:', url);
+
             try {
-                const response = await fetch(`/api/metricas/sub2?${params.toString()}`);
+                const response = await fetch(url);
                 const data = await response.json();
+                
+                console.log('✅ [FRONTEND] Dados recebidos:', {
+                    success: data.success,
+                    totalMetricas: data.metricas?.length || 0,
+                    totalLeads: data.totais?.totalLeads || 0
+                });
 
                 if (!data.success) {
                     throw new Error(data.error || 'Erro ao carregar métricas');
@@ -245,7 +302,7 @@
                 // Criar/atualizar gráficos
                 criarGraficos(metricas);
 
-                // Carregar gráfico de horários
+                // Carregar gráfico de horários (respeitando filtros, inclusive oferta)
                 await carregarHorarios();
 
                 // Preencher tabela
@@ -388,12 +445,17 @@
                 const dateFilter = document.getElementById('dateFilter').value;
                 const startDate = document.getElementById('startDate').value;
                 const endDate = document.getElementById('endDate').value;
+                const offerFilter = document.getElementById('offerFilter').value;
 
                 if (dateFilter) {
                     params.append('date', dateFilter);
                 } else {
                     if (startDate) params.append('startDate', startDate);
                     if (endDate) params.append('endDate', endDate);
+                }
+
+                if (offerFilter) {
+                    params.append('offerId', offerFilter);
                 }
 
                 const response = await fetch(`/api/metricas/horarios?${params.toString()}`);
