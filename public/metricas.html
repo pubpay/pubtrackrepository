@@ -29,6 +29,11 @@
                     <a href="/dashboard" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
                         ← Voltar ao Dashboard
                     </a>
+                    <button onclick="atualizarClarity()" id="btnClarity" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <span>🔄</span>
+                        <span>Atualizar Clarity</span>
+                        <span id="clarityCount" class="bg-purple-700 px-2 py-1 rounded text-sm">-</span>
+                    </button>
                 </div>
             </div>
 
@@ -157,6 +162,8 @@
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub2</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acessos (Clarity)</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuários Únicos</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead Totais</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead Aprovado</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cancel</th>
@@ -184,6 +191,9 @@
                 carregarMetricas();
             });
             
+            // Carregar contador de requisições do Clarity
+            atualizarContadorClarity();
+            
             // Recarregar métricas quando o filtro de oferta mudar
             document.getElementById('offerFilter').addEventListener('change', () => {
                 carregarMetricas();
@@ -203,6 +213,73 @@
                 }
             });
         });
+
+        // Função para atualizar contador de requisições do Clarity
+        async function atualizarContadorClarity() {
+            try {
+                const response = await fetch('/api/clarity/requests-count');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const countElement = document.getElementById('clarityCount');
+                    countElement.textContent = `${data.requisicoesRestantes}/10`;
+                    
+                    // Desabilitar botão se não houver requisições restantes
+                    const btnClarity = document.getElementById('btnClarity');
+                    if (data.requisicoesRestantes === 0) {
+                        btnClarity.disabled = true;
+                        btnClarity.classList.add('opacity-50', 'cursor-not-allowed');
+                        btnClarity.classList.remove('hover:bg-purple-600');
+                    } else {
+                        btnClarity.disabled = false;
+                        btnClarity.classList.remove('opacity-50', 'cursor-not-allowed');
+                        btnClarity.classList.add('hover:bg-purple-600');
+                    }
+                }
+            } catch (err) {
+                console.error('Erro ao carregar contador do Clarity:', err);
+            }
+        }
+
+        // Função para atualizar dados do Clarity
+        async function atualizarClarity() {
+            const btnClarity = document.getElementById('btnClarity');
+            const originalText = btnClarity.innerHTML;
+            
+            // Desabilitar botão durante a requisição
+            btnClarity.disabled = true;
+            btnClarity.innerHTML = '<span>⏳</span> <span>Atualizando...</span>';
+            
+            try {
+                const response = await fetch('/api/clarity/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ numOfDays: 1 })
+                });
+                
+                const data = await response.json();
+                
+                if (response.status === 429) {
+                    alert(`Limite diário atingido!\n\nVocê já fez ${data.requisicoesFeitas} requisições hoje.\nO limite será resetado amanhã.`);
+                } else if (data.success) {
+                    alert(`✅ Dados do Clarity atualizados com sucesso!\n\n${data.registrosInseridos} registros inseridos/atualizados.\n\nRequisições restantes: ${data.requisicoesRestantes}/10`);
+                    
+                    // Recarregar métricas para mostrar novos dados
+                    carregarMetricas();
+                } else {
+                    alert(`❌ Erro ao atualizar dados do Clarity:\n${data.error || data.details || 'Erro desconhecido'}`);
+                }
+            } catch (err) {
+                console.error('Erro ao atualizar Clarity:', err);
+                alert(`❌ Erro ao atualizar dados do Clarity:\n${err.message}`);
+            } finally {
+                // Restaurar botão
+                btnClarity.innerHTML = originalText;
+                atualizarContadorClarity();
+            }
+        }
 
         async function carregarProdutos() {
             try {
@@ -288,7 +365,7 @@
                 const metricas = data.metricas;
 
                 if (metricas.length === 0) {
-                    tabelaBody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">Nenhum dado encontrado para os filtros selecionados</td></tr>';
+                    tabelaBody.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">Nenhum dado encontrado para os filtros selecionados</td></tr>';
                     loading.classList.add('hidden');
                     return;
                 }
@@ -359,26 +436,84 @@
             const cores = gerarCores(metricas.length);
 
             // Gráfico de Leads por Sub2 (usando total_leads - todos os registros únicos)
+            // Incluir dados do Clarity se disponíveis
+            const datasetsLeads = [{
+                label: 'Leads Totais',
+                data: metricas.map(m => m.totalLeads),
+                backgroundColor: cores.map(c => c + '80'),
+                borderColor: cores,
+                borderWidth: 2
+            }];
+            
+            // Adicionar acessos do Clarity se disponíveis
+            const acessosClarity = metricas.map(m => m.acessosClarity || 0);
+            const usuariosUnicosClarity = metricas.map(m => m.usuariosUnicosClarity || 0);
+            const temAcessosClarity = acessosClarity.some(a => a > 0);
+            const temUsuariosUnicos = usuariosUnicosClarity.some(u => u > 0);
+            
+            if (temAcessosClarity) {
+                datasetsLeads.push({
+                    label: 'Acessos (Clarity)',
+                    data: acessosClarity,
+                    backgroundColor: 'rgba(147, 51, 234, 0.5)',
+                    borderColor: 'rgba(147, 51, 234, 1)',
+                    borderWidth: 2
+                });
+            }
+            
+            if (temUsuariosUnicos) {
+                datasetsLeads.push({
+                    label: 'Usuários Únicos (Clarity)',
+                    data: usuariosUnicosClarity,
+                    backgroundColor: 'rgba(99, 102, 241, 0.5)',
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    borderWidth: 2
+                });
+            }
+            
             criarGrafico('chartLeads', {
                 type: 'bar',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: 'Leads Totais',
-                        data: metricas.map(m => m.totalLeads),
-                        backgroundColor: cores.map(c => c + '80'),
-                        borderColor: cores,
-                        borderWidth: 2
-                    }]
+                    datasets: datasetsLeads
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: temAcessosClarity || temUsuariosUnicos },
                         title: {
                             display: true,
-                            text: 'Todos os Leads por Sub2'
+                            text: temAcessosClarity || temUsuariosUnicos ? 'Leads Totais vs Acessos e Usuários Únicos (Clarity) por Sub2' : 'Todos os Leads por Sub2'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const index = context.dataIndex;
+                                    const metrica = metricas[index];
+                                    const acessos = metrica.acessosClarity || 0;
+                                    const usuariosUnicos = metrica.usuariosUnicosClarity || 0;
+                                    const conversoes = metrica.conversoes || 0;
+                                    
+                                    let tooltipLines = [];
+                                    
+                                    if (acessos > 0) {
+                                        tooltipLines.push(`Acessos (Clarity): ${acessos.toLocaleString('pt-BR')}`);
+                                        const taxaConversao = ((conversoes / acessos) * 100).toFixed(2);
+                                        tooltipLines.push(`Taxa de Conversão: ${taxaConversao}%`);
+                                    } else {
+                                        tooltipLines.push('Acessos (Clarity): Não disponível');
+                                    }
+                                    
+                                    if (usuariosUnicos > 0) {
+                                        tooltipLines.push(`Usuários Únicos: ${usuariosUnicos.toLocaleString('pt-BR')}`);
+                                        const taxaConversaoUnicos = ((conversoes / usuariosUnicos) * 100).toFixed(2);
+                                        tooltipLines.push(`Taxa de Conversão (Únicos): ${taxaConversaoUnicos}%`);
+                                    }
+                                    
+                                    return tooltipLines;
+                                }
+                            }
                         }
                     },
                     scales: {
@@ -393,27 +528,75 @@
                 }
             });
 
-            // Gráfico de Leads Aprovados por Sub2
+            // Gráfico de Leads Aprovados por Sub2 com taxa de conversão
+            const datasetsConversoes = [{
+                label: 'Leads Aprovados',
+                data: metricas.map(m => m.conversoes),
+                backgroundColor: '#10b98180',
+                borderColor: '#10b981',
+                borderWidth: 2
+            }];
+            
+            // Adicionar taxa de conversão se houver dados do Clarity
+            if (temAcessosClarity) {
+                datasetsConversoes.push({
+                    label: 'Taxa de Conversão (%)',
+                    data: metricas.map(m => m.taxaConversao || 0),
+                    type: 'line',
+                    yAxisID: 'y1',
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                });
+            }
+            
             criarGrafico('chartConversoes', {
                 type: 'bar',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: 'Leads Aprovados',
-                        data: metricas.map(m => m.conversoes),
-                        backgroundColor: '#10b98180',
-                        borderColor: '#10b981',
-                        borderWidth: 2
-                    }]
+                    datasets: datasetsConversoes
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: temAcessosClarity },
                         title: {
                             display: true,
-                            text: 'Todos os Leads Aprovados por Sub2'
+                            text: temAcessosClarity ? 'Leads Aprovados e Taxa de Conversão por Sub2' : 'Todos os Leads Aprovados por Sub2'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const index = context.dataIndex;
+                                    const metrica = metricas[index];
+                                    const acessos = metrica.acessosClarity || 0;
+                                    const usuariosUnicos = metrica.usuariosUnicosClarity || 0;
+                                    const conversoes = metrica.conversoes || 0;
+                                    
+                                    let tooltipLines = [];
+                                    
+                                    if (acessos > 0) {
+                                        tooltipLines.push(`Acessos (Clarity): ${acessos.toLocaleString('pt-BR')}`);
+                                        const taxaConversao = ((conversoes / acessos) * 100).toFixed(2);
+                                        tooltipLines.push(`Taxa de Conversão: ${taxaConversao}%`);
+                                        tooltipLines.push(`(${conversoes} conversões de ${acessos.toLocaleString('pt-BR')} acessos)`);
+                                    } else {
+                                        tooltipLines.push('Acessos (Clarity): Não disponível');
+                                    }
+                                    
+                                    if (usuariosUnicos > 0) {
+                                        tooltipLines.push(`Usuários Únicos: ${usuariosUnicos.toLocaleString('pt-BR')}`);
+                                        const taxaConversaoUnicos = ((conversoes / usuariosUnicos) * 100).toFixed(2);
+                                        tooltipLines.push(`Taxa de Conversão (Únicos): ${taxaConversaoUnicos}%`);
+                                        tooltipLines.push(`(${conversoes} conversões de ${usuariosUnicos.toLocaleString('pt-BR')} usuários únicos)`);
+                                    }
+                                    
+                                    return tooltipLines;
+                                }
+                            }
                         }
                     },
                     scales: {
@@ -422,8 +605,33 @@
                             ticks: {
                                 stepSize: 1,
                                 precision: 0
+                            },
+                            title: {
+                                display: true,
+                                text: 'Leads Aprovados'
                             }
-                        }
+                        },
+                        ...(temAcessosClarity ? {
+                            y1: {
+                                type: 'linear',
+                                position: 'right',
+                                beginAtZero: true,
+                                max: 100,
+                                ticks: {
+                                    stepSize: 10,
+                                    callback: function(value) {
+                                        return value + '%';
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Taxa de Conversão (%)'
+                                },
+                                grid: {
+                                    drawOnChartArea: false
+                                }
+                            }
+                        } : {})
                     }
                 }
             });
@@ -561,10 +769,11 @@
             const taxaCambio = parseFloat(document.getElementById('taxaCambio').value) || 5.38;
 
             metricas.forEach(metrica => {
-                // Calcular taxa de conversão baseada em totalLeads
-                const taxaConversao = metrica.totalLeads > 0 
-                    ? ((metrica.conversoes / metrica.totalLeads) * 100).toFixed(2) 
-                    : '0.00';
+                // Taxa de conversão já vem calculada do backend (baseada em acessos do Clarity se disponível)
+                const taxaConversao = metrica.taxaConversao || 0;
+                const taxaConversaoUnicos = metrica.taxaConversaoUnicos || 0;
+                const acessosClarity = metrica.acessosClarity || 0;
+                const usuariosUnicosClarity = metrica.usuariosUnicosClarity || 0;
                 
                 // Converter valor total faturado de USD para BRL
                 const valorFaturadoBRL = metrica.valorTotal * taxaCambio;
@@ -573,11 +782,13 @@
                 row.className = 'hover:bg-gray-50 fade-in';
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${metrica.sub2}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-purple-600 font-semibold">${acessosClarity > 0 ? acessosClarity.toLocaleString('pt-BR') : '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-semibold">${usuariosUnicosClarity > 0 ? usuariosUnicosClarity.toLocaleString('pt-BR') : '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-900 font-semibold">${metrica.totalLeads}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">${metrica.conversoes}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">${metrica.cancel}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${metrica.trash}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">${taxaConversao}%</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">${taxaConversao.toFixed(2)}%${usuariosUnicosClarity > 0 ? `<br><span class="text-xs text-indigo-500">(${taxaConversaoUnicos.toFixed(2)}% únicos)</span>` : ''}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600 font-semibold">${formatarMoeda(valorFaturadoBRL)}</td>
                 `;
                 tbody.appendChild(row);

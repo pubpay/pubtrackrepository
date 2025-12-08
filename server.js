@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -268,6 +269,58 @@ try {
           console.error('❌ Erro ao criar tabela campaign_stats:', err.message);
         } else {
           console.log('✅ Tabela campaign_stats criada/verificada');
+        }
+      });
+
+      // Criar tabela para armazenar dados do Clarity
+      db.run(`CREATE TABLE IF NOT EXISTS clarity_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL,
+        sub2 TEXT,
+        acessos INTEGER DEFAULT 0,
+        usuarios_unicos INTEGER DEFAULT 0,
+        data_coleta DATE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(url, data_coleta)
+      )`, (err) => {
+        if (err) {
+          console.error('❌ Erro ao criar tabela clarity_data:', err.message);
+        } else {
+          console.log('✅ Tabela clarity_data criada/verificada');
+          
+          // Adicionar coluna usuarios_unicos se não existir (migração)
+          db.all("PRAGMA table_info(clarity_data)", [], (err, columns) => {
+            if (err) {
+              console.error('❌ Erro ao verificar colunas:', err.message);
+              return;
+            }
+            
+            const columnNames = columns.map(col => col.name);
+            if (!columnNames.includes('usuarios_unicos')) {
+              db.run('ALTER TABLE clarity_data ADD COLUMN usuarios_unicos INTEGER DEFAULT 0', (err) => {
+                if (err) {
+                  console.error('❌ Erro ao adicionar coluna usuarios_unicos:', err.message);
+                } else {
+                  console.log('✅ Coluna usuarios_unicos adicionada com sucesso');
+                }
+              });
+            }
+          });
+        }
+      });
+
+      // Criar tabela para controlar requisições do Clarity
+      db.run(`CREATE TABLE IF NOT EXISTS clarity_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data DATE NOT NULL UNIQUE,
+        requisicoes_feitas INTEGER DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`, (err) => {
+        if (err) {
+          console.error('❌ Erro ao criar tabela clarity_requests:', err.message);
+        } else {
+          console.log('✅ Tabela clarity_requests criada/verificada');
         }
       });
     }
@@ -2511,45 +2564,68 @@ app.get('/api/metricas/sub2', (req, res) => {
   // IMPORTANTE: valor_total deve ser apenas das conversões (leads aprovados)
   // Usar COUNT(DISTINCT) para contar leads únicos, não todos os registros
   // Quando filtrar por offer_id, mostrar APENAS os sub2 que têm registros com aquele offer_id
+  // Incluir dados do Clarity (acessos) via LEFT JOIN
+  // Agrupar dados do Clarity por sub2 primeiro para evitar duplicação
+  const today = getTodayDate();
   let sql = `SELECT 
-    sub_id2 as sub2,
-    COUNT(DISTINCT COALESCE(lead_id, 'unique_' || CAST(id AS TEXT))) as total_leads,
-    SUM(CASE WHEN notification_type = 'lead' THEN 1 ELSE 0 END) as leads,
-    SUM(CASE WHEN notification_type = 'conversao' THEN 1 ELSE 0 END) as conversoes,
-    SUM(CASE WHEN notification_type = 'cancel' THEN 1 ELSE 0 END) as cancel,
-    SUM(CASE WHEN notification_type = 'trash' THEN 1 ELSE 0 END) as trash,
-    SUM(CASE WHEN notification_type = 'conversao' AND payout IS NOT NULL THEN payout ELSE 0 END) as valor_total,
-    AVG(CASE WHEN notification_type = 'conversao' AND payout IS NOT NULL THEN payout ELSE NULL END) as valor_medio
-  FROM conversions
-  WHERE sub_id2 IS NOT NULL AND sub_id2 != ''
+    c.sub_id2 as sub2,
+    COUNT(DISTINCT COALESCE(c.lead_id, 'unique_' || CAST(c.id AS TEXT))) as total_leads,
+    SUM(CASE WHEN c.notification_type = 'lead' THEN 1 ELSE 0 END) as leads,
+    SUM(CASE WHEN c.notification_type = 'conversao' THEN 1 ELSE 0 END) as conversoes,
+    SUM(CASE WHEN c.notification_type = 'cancel' THEN 1 ELSE 0 END) as cancel,
+    SUM(CASE WHEN c.notification_type = 'trash' THEN 1 ELSE 0 END) as trash,
+    SUM(CASE WHEN c.notification_type = 'conversao' AND c.payout IS NOT NULL THEN c.payout ELSE 0 END) as valor_total,
+    AVG(CASE WHEN c.notification_type = 'conversao' AND c.payout IS NOT NULL THEN c.payout ELSE NULL END) as valor_medio,
+    COALESCE(cl.acessos_total, 0) as acessos_clarity,
+    COALESCE(cl.usuarios_unicos_total, 0) as usuarios_unicos_clarity
+  FROM conversions c
+  LEFT JOIN (
+    SELECT sub2, SUM(acessos) as acessos_total, SUM(usuarios_unicos) as usuarios_unicos_total
+    FROM clarity_data
+    WHERE data_coleta = ?
+    GROUP BY sub2
+  ) cl ON (
+    -- Match exato
+    c.sub_id2 = cl.sub2 
+    OR 
+    -- Match normalizando sub_id2 (removendo -pr2 ou pr2 do final e normalizando underscores)
+    REPLACE(REPLACE(REPLACE(c.sub_id2, '-pr2', ''), 'pr2', ''), '_', '') = REPLACE(cl.sub2, '_', '')
+    OR
+    -- Match normalizando sub2 do Clarity (caso tenha pr2 também)
+    REPLACE(c.sub_id2, '_', '') = REPLACE(REPLACE(REPLACE(cl.sub2, '-pr2', ''), 'pr2', ''), '_', '')
+    OR
+    -- Match normalizando ambos (removendo -pr2/pr2 e normalizando underscores)
+    REPLACE(REPLACE(REPLACE(c.sub_id2, '-pr2', ''), 'pr2', ''), '_', '') = REPLACE(REPLACE(REPLACE(cl.sub2, '-pr2', ''), 'pr2', ''), '_', '')
+  )
+  WHERE c.sub_id2 IS NOT NULL AND c.sub_id2 != ''
   `;
 
-  const params = [];
+  const params = [today]; // Adicionar data para o JOIN com clarity_data
 
   // Filtro por Offer ID - IMPORTANTE: filtrar apenas pela oferta selecionada
   // Isso garante que só mostra os sub2 (páginas) que pertencem a essa oferta específica
   if (offerIdFilter) {
-    sql += ` AND offer_id = ?`;
+    sql += ` AND c.offer_id = ?`;
     params.push(offerIdFilter.trim()); // Remove espaços em branco
     console.log(`🔍 [MÉTRICAS SUB2] Aplicando filtro por offer_id: "${offerIdFilter}"`);
     console.log(`🔍 [MÉTRICAS SUB2] Isso vai mostrar APENAS os sub2 (páginas) da oferta ${offerIdFilter}`);
   }
 
   if (dateFilter) {
-    sql += ` AND (date(date) = date(?) OR (date IS NULL AND date(created_at) = date(?)))`;
+    sql += ` AND (date(c.date) = date(?) OR (c.date IS NULL AND date(c.created_at) = date(?)))`;
     params.push(dateFilter, dateFilter);
   } else if (startDate || endDate) {
     if (startDate) {
-      sql += ` AND (date(date) >= date(?) OR (date IS NULL AND date(created_at) >= date(?)))`;
+      sql += ` AND (date(c.date) >= date(?) OR (c.date IS NULL AND date(c.created_at) >= date(?)))`;
       params.push(startDate, startDate);
     }
     if (endDate) {
-      sql += ` AND (date(date) <= date(?) OR (date IS NULL AND date(created_at) <= date(?)))`;
+      sql += ` AND (date(c.date) <= date(?) OR (c.date IS NULL AND date(c.created_at) <= date(?)))`;
       params.push(endDate, endDate);
     }
   }
 
-  sql += ` GROUP BY sub_id2 ORDER BY total_leads DESC`;
+  sql += ` GROUP BY c.sub_id2 ORDER BY total_leads DESC`;
 
   console.log(`📝 [MÉTRICAS SUB2] SQL executado:`, sql);
   console.log(`📝 [MÉTRICAS SUB2] Parâmetros:`, params);
@@ -2639,18 +2715,31 @@ app.get('/api/metricas/sub2', (req, res) => {
       });
 
       // Formatar os dados
-      const metricas = rows.map(row => ({
-        sub2: row.sub2 || 'N/A',
-        totalLeads: row.total_leads,
-        leads: row.leads,
-        conversoes: row.conversoes,
-        cancel: row.cancel,
-        trash: row.trash,
-        valorTotal: row.valor_total || 0,
-        valorMedio: row.valor_medio || 0,
-        // Taxa de conversão será calculada no frontend baseada em totalLeads
-        taxaConversao: row.total_leads > 0 ? ((row.conversoes / row.total_leads) * 100).toFixed(2) : 0
-      }));
+      const metricas = rows.map(row => {
+        const acessosClarity = row.acessos_clarity || 0;
+        const conversoes = row.conversoes || 0;
+        
+        // Taxa de conversão baseada em acessos do Clarity (se disponível) ou totalLeads
+        let taxaConversao = 0;
+        if (acessosClarity > 0) {
+          taxaConversao = ((conversoes / acessosClarity) * 100).toFixed(2);
+        } else if (row.total_leads > 0) {
+          taxaConversao = ((conversoes / row.total_leads) * 100).toFixed(2);
+        }
+        
+        return {
+          sub2: row.sub2 || 'N/A',
+          totalLeads: row.total_leads,
+          leads: row.leads,
+          conversoes: conversoes,
+          cancel: row.cancel,
+          trash: row.trash,
+          valorTotal: row.valor_total || 0,
+          valorMedio: row.valor_medio || 0,
+          acessosClarity: acessosClarity,
+          taxaConversao: parseFloat(taxaConversao)
+        };
+      });
 
       res.json({ 
         success: true, 
@@ -2734,6 +2823,381 @@ app.get('/api/debug/offer-sub2', (req, res) => {
       data: grouped,
       message: offerIdFilter ? `Sub2 da oferta ${offerIdFilter}` : 'Todos os offer_id e seus sub2'
     });
+  });
+});
+
+// Token do Clarity (deve ser configurado via variável de ambiente em produção)
+const CLARITY_TOKEN = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjQ4M0FCMDhFNUYwRDMxNjdEOTRFMTQ3M0FEQTk2RTcyRDkwRUYwRkYiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiI5NmQyMWU3Ny1kYWUyLTRlNjAtOTZkNy0yNjRlYTMwMWQ4YmEiLCJzdWIiOiIzMDk4NDg1NTg5NDEyMTA1Iiwic2NvcGUiOiJEYXRhLkV4cG9ydCIsIm5iZiI6MTc2NTE5OTM1MiwiZXhwIjo0OTE4Nzk5MzUxLCJpYXQiOjE3NjUxOTkzNTEsImlzcyI6ImNsYXJpdHkiLCJhdWQiOiJjbGFyaXR5LmRhdGEtZXhwb3J0ZXIifQ.LO7vlz4mRHRA758Hj4ov2R-4xEBBx6ARisKdx2N0-pFsg36Klic_dzl1TglRftBQcVnmPgQnH05H_xk8YaHbpSpZ304YcOwjpuhD1d_jbAN22JsqBJkw8n00m3bxBExSOxoke4FOMeep0H7zWFBAws9CaYJl6oijxym7-X19FMIcytgKI_wdFYS9GoFWwMiyibfWB2uMb9Zogp-vR1M5jpjsvK9QtrGcrjSvet-Mhl8y4gPuEEJ0ypzBLTaTV1K8Px9Jk37bzXWNGkqukATYmytl0-goo-Xvg7Uixw59RI0AEocfMOmjaYMwbYnEqyX2A5fyil54WTIQ0I0qEN1AMg';
+
+// Função para fazer requisição à API do Clarity
+function fetchClarityData(numOfDays = 1, dimension1 = 'URL') {
+  return new Promise((resolve, reject) => {
+    const url = `https://www.clarity.ms/export-data/api/v1/project-live-insights?numOfDays=${numOfDays}&dimension1=${dimension1}`;
+    
+    const options = {
+      headers: {
+        'Authorization': `Bearer ${CLARITY_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    };
+
+    https.get(url, options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        console.log(`📡 Resposta da API do Clarity:`);
+        console.log(`   Status Code: ${res.statusCode}`);
+        console.log(`   Tamanho da resposta: ${data.length} bytes`);
+        console.log(`   Primeiros 500 caracteres: ${data.substring(0, 500)}`);
+        
+        if (res.statusCode === 200) {
+          try {
+            const jsonData = JSON.parse(data);
+            console.log(`✅ Resposta parseada com sucesso`);
+            resolve(jsonData);
+          } catch (err) {
+            console.error(`❌ Erro ao parsear JSON:`, err.message);
+            console.error(`   Resposta completa:`, data);
+            reject(new Error(`Erro ao parsear resposta: ${err.message}`));
+          }
+        } else {
+          console.error(`❌ Erro na API do Clarity: ${res.statusCode}`);
+          console.error(`   Resposta:`, data);
+          reject(new Error(`Erro na API do Clarity: ${res.statusCode} - ${data.substring(0, 500)}`));
+        }
+      });
+    }).on('error', (err) => {
+      reject(new Error(`Erro na requisição: ${err.message}`));
+    });
+  });
+}
+
+// Função para extrair identificador da URL do Clarity
+// Exemplo: https://news.wellhubus.com/ldr/gota/f01/vsl/gta-vsl2-ld1/index.php -> gta-vsl2-ld1
+function extractIdentifierFromClarityUrl(url) {
+  if (!url) return null;
+  
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    
+    // Extrair o identificador do caminho da URL
+    // Padrão: /ldr/gota/f01/vsl/gta-vsl2-ld1/index.php
+    // Ou: /ldr/gota/f01/vsl/gta-vsl2-mn3/index.php
+    const match = pathname.match(/\/([^\/]+)\/index\.php$/);
+    if (match) {
+      return match[1]; // Retorna: gta-vsl2-ld1 ou gta-vsl2-mn3
+    }
+    
+    // Fallback: tentar extrair da última parte do caminho antes de index.php
+    const parts = pathname.split('/').filter(p => p);
+    if (parts.length > 0) {
+      const lastPart = parts[parts.length - 2]; // Penúltima parte antes de index.php
+      if (lastPart && !lastPart.includes('index')) {
+        return lastPart;
+      }
+    }
+    
+    return null;
+  } catch (err) {
+    // Se não for uma URL válida, tentar extrair com regex
+    const match = url.match(/\/([^\/]+)\/index\.php/);
+    return match ? match[1] : null;
+  }
+}
+
+// Função para normalizar sub2 removendo -pr2 ou pr2 no final
+// Exemplo: gta-vsl2-ld1-pr2 -> gta-vsl2-ld1
+// Exemplo: gta-vsl2-mn2pr2 -> gta-vsl2-mn2 (mas na verdade deveria ser gta-vsl2-mn3 baseado no exemplo)
+function normalizeSub2(sub2) {
+  if (!sub2) return null;
+  
+  // Remover -pr2 no final
+  let normalized = sub2.replace(/-pr2$/, '');
+  
+  // Remover pr2 no final (sem hífen)
+  normalized = normalized.replace(/pr2$/, '');
+  
+  return normalized;
+}
+
+// Função para extrair sub2 da URL (mantida para compatibilidade com outros formatos)
+function extractSub2FromUrl(url) {
+  if (!url) return null;
+  
+  // Primeiro tentar extrair do caminho da URL (formato Clarity)
+  const identifier = extractIdentifierFromClarityUrl(url);
+  if (identifier) {
+    return identifier;
+  }
+  
+  // Tentar extrair sub2 de parâmetros de query (formato tradicional)
+  try {
+    const urlObj = new URL(url);
+    const sub2 = urlObj.searchParams.get('sub2') || urlObj.searchParams.get('sub_id2') || urlObj.searchParams.get('sub_id_2');
+    return sub2;
+  } catch (err) {
+    // Se não for uma URL válida, tentar extrair de outros formatos
+    const match = url.match(/[?&](?:sub2|sub_id2|sub_id_2)=([^&]+)/i);
+    return match ? match[1] : null;
+  }
+}
+
+// Rota para obter contador de requisições do Clarity
+app.get('/api/clarity/requests-count', (req, res) => {
+  if (!db) {
+    return res.status(500).json({ error: 'Banco de dados não disponível' });
+  }
+
+  const today = getTodayDate();
+  
+  db.get('SELECT requisicoes_feitas FROM clarity_requests WHERE data = ?', [today], (err, row) => {
+    if (err) {
+      console.error('❌ Erro ao buscar contador de requisições:', err.message);
+      return res.status(500).json({ error: 'Erro ao buscar contador', details: err.message });
+    }
+
+    const requisicoesFeitas = row ? row.requisicoes_feitas : 0;
+    const requisicoesRestantes = Math.max(0, 10 - requisicoesFeitas);
+
+    res.json({
+      success: true,
+      requisicoesFeitas,
+      requisicoesRestantes,
+      limiteDiario: 10,
+      data: today
+    });
+  });
+});
+
+// Rota para buscar e atualizar dados do Clarity
+app.post('/api/clarity/update', async (req, res) => {
+  if (!db) {
+    return res.status(500).json({ error: 'Banco de dados não disponível' });
+  }
+
+  const today = getTodayDate();
+  const numOfDays = req.body.numOfDays || 1;
+
+  // Verificar se ainda há requisições disponíveis
+  db.get('SELECT requisicoes_feitas FROM clarity_requests WHERE data = ?', [today], (err, row) => {
+    if (err) {
+      console.error('❌ Erro ao verificar contador:', err.message);
+      return res.status(500).json({ error: 'Erro ao verificar contador', details: err.message });
+    }
+
+    const requisicoesFeitas = row ? row.requisicoes_feitas : 0;
+    
+    if (requisicoesFeitas >= 10) {
+      return res.status(429).json({ 
+        error: 'Limite diário atingido',
+        message: 'Você já fez 10 requisições hoje. O limite será resetado amanhã.',
+        requisicoesFeitas,
+        requisicoesRestantes: 0
+      });
+    }
+
+    // Fazer requisição à API do Clarity
+    fetchClarityData(numOfDays, 'URL')
+      .then(async (clarityData) => {
+        console.log('✅ Dados recebidos do Clarity');
+        console.log('📋 Estrutura completa da resposta:', JSON.stringify(clarityData, null, 2));
+        console.log('📊 Tipo:', Array.isArray(clarityData) ? 'Array' : typeof clarityData);
+        console.log('📊 Tamanho:', Array.isArray(clarityData) ? clarityData.length : 'N/A');
+
+        // Processar dados e armazenar no banco
+        const insertPromises = [];
+        let totalProcessados = 0;
+        let totalComUrl = 0;
+        
+        // A resposta é um array de objetos com metricName e information
+        if (!Array.isArray(clarityData)) {
+          console.error('❌ Resposta do Clarity não é um array:', typeof clarityData);
+          return res.status(500).json({ 
+            error: 'Formato de resposta inválido',
+            details: 'A resposta da API não está no formato esperado'
+          });
+        }
+        
+        for (const metric of clarityData) {
+          console.log(`\n🔍 Processando métrica: ${metric.metricName || 'N/A'}`);
+          
+          // Buscar métrica "Traffic" conforme documentação
+          if (metric.metricName === 'Traffic' && metric.information && Array.isArray(metric.information)) {
+            console.log(`   📈 Encontrada métrica Traffic com ${metric.information.length} registros`);
+            
+            for (const info of metric.information) {
+              totalProcessados++;
+              
+              // Quando dimension1=URL, a propriedade deve ser "URL" (maiúscula)
+              // Conforme documentação: "Possible dimensions: URL"
+              const url = info.URL || info.url || info.pageUrl || info.Url || null;
+              
+              if (!url) {
+                console.log(`   ⚠️ Registro ${totalProcessados} sem URL. Propriedades disponíveis:`, Object.keys(info));
+                continue;
+              }
+              
+              totalComUrl++;
+              const acessos = parseInt(info.totalSessionCount || 0) || 0;
+              const usuariosUnicos = parseInt(info.distantUserCount || 0) || 0;
+              
+              // Extrair identificador da URL do Clarity (ex: gta-vsl2-ld1 de /vsl/gta-vsl2-ld1/index.php)
+              const identifierFromUrl = extractIdentifierFromClarityUrl(url);
+              
+              console.log(`   📊 Processando URL: ${url}`);
+              console.log(`      Identificador extraído: ${identifierFromUrl}`);
+              console.log(`      Acessos (totalSessionCount): ${acessos}`);
+              console.log(`      Usuários Únicos (distantUserCount): ${usuariosUnicos}`);
+              console.log(`      Dados completos:`, JSON.stringify(info, null, 2));
+              
+              if (!identifierFromUrl) {
+                console.log(`   ⚠️ Não foi possível extrair identificador da URL: ${url}`);
+                continue;
+              }
+              
+              // Armazenar o identificador extraído da URL como sub2
+              // Este será usado para fazer match com sub2 da LeadRock (que pode ter -pr2 ou pr2 no final)
+              const sub2 = identifierFromUrl;
+
+              // Inserir ou atualizar dados (SQLite usa INSERT OR REPLACE ou verificação manual)
+              // Primeiro verificar se já existe
+              const checkSql = 'SELECT id FROM clarity_data WHERE url = ? AND data_coleta = ?';
+              const insertSql = `
+                INSERT INTO clarity_data (url, sub2, acessos, usuarios_unicos, data_coleta, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+              `;
+              const updateSql = `
+                UPDATE clarity_data 
+                SET acessos = ?, usuarios_unicos = ?, sub2 = ?, updated_at = datetime('now')
+                WHERE url = ? AND data_coleta = ?
+              `;
+              
+              console.log(`   💾 Preparando para salvar: url="${url}", sub2="${sub2}", acessos=${acessos}, usuarios_unicos=${usuariosUnicos}, data="${today}"`);
+              
+              insertPromises.push(
+                new Promise((resolve, reject) => {
+                  // Verificar se já existe
+                  db.get(checkSql, [url, today], (err, existing) => {
+                    if (err) {
+                      console.error(`   ❌ Erro ao verificar dados do Clarity para URL ${url}:`, err.message);
+                      reject(err);
+                      return;
+                    }
+                    
+                      if (existing) {
+                        console.log(`   🔄 Atualizando registro existente (ID: ${existing.id})`);
+                        // Atualizar registro existente
+                        db.run(updateSql, [acessos, usuariosUnicos, sub2, url, today], function(err) {
+                        if (err) {
+                          console.error(`   ❌ Erro ao atualizar dados do Clarity:`, err.message);
+                          reject(err);
+                        } else {
+                          console.log(`   ✅ Registro atualizado com sucesso (linhas afetadas: ${this.changes})`);
+                          resolve();
+                        }
+                      });
+                      } else {
+                        console.log(`   ➕ Inserindo novo registro`);
+                        // Inserir novo registro
+                        db.run(insertSql, [url, sub2, acessos, usuariosUnicos, today], function(err) {
+                        if (err) {
+                          console.error(`   ❌ Erro ao inserir dados do Clarity:`, err.message);
+                          console.error(`   SQL: ${insertSql}`);
+                          console.error(`   Parâmetros: [${url}, ${sub2}, ${acessos}, ${today}]`);
+                          reject(err);
+                        } else {
+                          console.log(`   ✅ Registro inserido com sucesso (ID: ${this.lastID}, linhas afetadas: ${this.changes})`);
+                          resolve();
+                        }
+                      });
+                    }
+                  });
+                })
+              );
+            }
+          }
+        }
+        
+        // Se não encontrou métrica Traffic, listar todas as métricas disponíveis
+        if (totalProcessados === 0) {
+          console.log(`\n⚠️ Nenhuma métrica "Traffic" encontrada. Métricas disponíveis:`);
+          clarityData.forEach((m, idx) => {
+            console.log(`   ${idx + 1}. ${m.metricName || 'Sem nome'} - ${m.information ? m.information.length : 0} registros`);
+          });
+        }
+
+        console.log(`\n📊 Resumo do processamento:`);
+        console.log(`   Total de registros processados: ${totalProcessados}`);
+        console.log(`   Registros com URL: ${totalComUrl}`);
+        console.log(`   Registros a inserir/atualizar: ${insertPromises.length}`);
+        
+        if (insertPromises.length === 0) {
+          console.log(`\n⚠️ Nenhum registro será inserido. Verifique:`);
+          console.log(`   1. Se há dados no Clarity para o período selecionado`);
+          console.log(`   2. Se a dimensão URL está retornando dados`);
+          console.log(`   3. Se as URLs estão no formato esperado`);
+        }
+        
+        // Aguardar todas as inserções
+        if (insertPromises.length > 0) {
+          console.log(`\n💾 Iniciando salvamento de ${insertPromises.length} registros...`);
+          try {
+            await Promise.all(insertPromises);
+            console.log(`✅ ${insertPromises.length} registros do Clarity salvos/atualizados com sucesso`);
+          } catch (err) {
+            console.error(`❌ Erro ao salvar registros do Clarity:`, err.message);
+            console.error(`   Stack:`, err.stack);
+            // Continuar mesmo com erros parciais
+          }
+        } else {
+          console.log(`\n⚠️ Nenhum registro para salvar. Verifique os logs acima para entender o motivo.`);
+        }
+
+        // Atualizar contador de requisições
+        const updateCounterSql = `
+          INSERT INTO clarity_requests (data, requisicoes_feitas, updated_at)
+          VALUES (?, 1, datetime('now'))
+          ON CONFLICT(data) 
+          DO UPDATE SET 
+            requisicoes_feitas = requisicoes_feitas + 1,
+            updated_at = datetime('now')
+        `;
+
+        db.run(updateCounterSql, [today], (err) => {
+          if (err) {
+            console.error('❌ Erro ao atualizar contador:', err.message);
+          } else {
+            console.log('✅ Contador de requisições atualizado');
+          }
+        });
+
+        // Buscar contador atualizado
+        db.get('SELECT requisicoes_feitas FROM clarity_requests WHERE data = ?', [today], (err, updatedRow) => {
+          const novasRequisicoesFeitas = updatedRow ? updatedRow.requisicoes_feitas : requisicoesFeitas + 1;
+          const novasRequisicoesRestantes = Math.max(0, 10 - novasRequisicoesFeitas);
+
+          res.json({
+            success: true,
+            message: 'Dados do Clarity atualizados com sucesso',
+            registrosInseridos: insertPromises.length,
+            requisicoesFeitas: novasRequisicoesFeitas,
+            requisicoesRestantes: novasRequisicoesRestantes,
+            limiteDiario: 10
+          });
+        });
+      })
+      .catch((error) => {
+        console.error('❌ Erro ao buscar dados do Clarity:', error.message);
+        res.status(500).json({ 
+          error: 'Erro ao buscar dados do Clarity',
+          details: error.message
+        });
+      });
   });
 });
 
