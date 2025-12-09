@@ -29,11 +29,6 @@
                     <a href="/dashboard" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
                         ← Voltar ao Dashboard
                     </a>
-                    <button onclick="atualizarClarity()" id="btnClarity" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center gap-2">
-                        <span>🔄</span>
-                        <span>Atualizar Clarity</span>
-                        <span id="clarityCount" class="bg-purple-700 px-2 py-1 rounded text-sm">-</span>
-                    </button>
                     <button onclick="atualizarGoogleAnalytics()" id="btnAnalytics" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2">
                         <span>📊</span>
                         <span>Atualizar Google Analytics</span>
@@ -166,7 +161,7 @@
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sub2</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acessos (Clarity)</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acessos (Google Analytics)</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuários Únicos</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead Totais</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead Aprovado</th>
@@ -195,8 +190,6 @@
                 carregarMetricas();
             });
             
-            // Carregar contador de requisições do Clarity
-            atualizarContadorClarity();
             
             // Verificar status do Google Analytics
             verificarStatusAnalytics();
@@ -245,72 +238,6 @@
             }
         }
 
-        // Função para atualizar contador de requisições do Clarity
-        async function atualizarContadorClarity() {
-            try {
-                const response = await fetch('/api/clarity/requests-count');
-                const data = await response.json();
-                
-                if (data.success) {
-                    const countElement = document.getElementById('clarityCount');
-                    countElement.textContent = `${data.requisicoesRestantes}/10`;
-                    
-                    // Desabilitar botão se não houver requisições restantes
-                    const btnClarity = document.getElementById('btnClarity');
-                    if (data.requisicoesRestantes === 0) {
-                        btnClarity.disabled = true;
-                        btnClarity.classList.add('opacity-50', 'cursor-not-allowed');
-                        btnClarity.classList.remove('hover:bg-purple-600');
-                    } else {
-                        btnClarity.disabled = false;
-                        btnClarity.classList.remove('opacity-50', 'cursor-not-allowed');
-                        btnClarity.classList.add('hover:bg-purple-600');
-                    }
-                }
-            } catch (err) {
-                console.error('Erro ao carregar contador do Clarity:', err);
-            }
-        }
-
-        // Função para atualizar dados do Clarity
-        async function atualizarClarity() {
-            const btnClarity = document.getElementById('btnClarity');
-            const originalText = btnClarity.innerHTML;
-            
-            // Desabilitar botão durante a requisição
-            btnClarity.disabled = true;
-            btnClarity.innerHTML = '<span>⏳</span> <span>Atualizando...</span>';
-            
-            try {
-                const response = await fetch('/api/clarity/update', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ numOfDays: 1 })
-                });
-                
-                const data = await response.json();
-                
-                if (response.status === 429) {
-                    alert(`Limite diário atingido!\n\nVocê já fez ${data.requisicoesFeitas} requisições hoje.\nO limite será resetado amanhã.`);
-                } else if (data.success) {
-                    alert(`✅ Dados do Clarity atualizados com sucesso!\n\n${data.registrosInseridos} registros inseridos/atualizados.\n\nRequisições restantes: ${data.requisicoesRestantes}/10`);
-                    
-                    // Recarregar métricas para mostrar novos dados
-                    carregarMetricas();
-                } else {
-                    alert(`❌ Erro ao atualizar dados do Clarity:\n${data.error || data.details || 'Erro desconhecido'}`);
-                }
-            } catch (err) {
-                console.error('Erro ao atualizar Clarity:', err);
-                alert(`❌ Erro ao atualizar dados do Clarity:\n${err.message}`);
-            } finally {
-                // Restaurar botão
-                btnClarity.innerHTML = originalText;
-                atualizarContadorClarity();
-            }
-        }
 
         // Função para atualizar dados do Google Analytics
         async function atualizarGoogleAnalytics() {
@@ -523,28 +450,28 @@
                 borderWidth: 2
             }];
             
-            // Adicionar acessos do Clarity se disponíveis
-            const acessosClarity = metricas.map(m => m.acessosClarity || 0);
-            const usuariosUnicosClarity = metricas.map(m => m.usuariosUnicosClarity || 0);
-            const temAcessosClarity = acessosClarity.some(a => a > 0);
-            const temUsuariosUnicos = usuariosUnicosClarity.some(u => u > 0);
+            // Adicionar acessos do Google Analytics se disponíveis
+            const acessosAnalytics = metricas.map(m => m.acessosClarity || 0);
+            const usuariosUnicosAnalytics = metricas.map(m => m.usuariosUnicosClarity || 0);
+            const temAcessosAnalytics = acessosAnalytics.some(a => a > 0);
+            const temUsuariosUnicos = usuariosUnicosAnalytics.some(u => u > 0);
             
-            if (temAcessosClarity) {
+            if (temAcessosAnalytics) {
                 datasetsLeads.push({
-                    label: 'Acessos (Clarity)',
-                    data: acessosClarity,
-                    backgroundColor: 'rgba(147, 51, 234, 0.5)',
-                    borderColor: 'rgba(147, 51, 234, 1)',
+                    label: 'Acessos (Google Analytics)',
+                    data: acessosAnalytics,
+                    backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
                     borderWidth: 2
                 });
             }
             
             if (temUsuariosUnicos) {
                 datasetsLeads.push({
-                    label: 'Usuários Únicos (Clarity)',
-                    data: usuariosUnicosClarity,
-                    backgroundColor: 'rgba(99, 102, 241, 0.5)',
-                    borderColor: 'rgba(99, 102, 241, 1)',
+                    label: 'Usuários Únicos (Google Analytics)',
+                    data: usuariosUnicosAnalytics,
+                    backgroundColor: 'rgba(37, 99, 235, 0.5)',
+                    borderColor: 'rgba(37, 99, 235, 1)',
                     borderWidth: 2
                 });
             }
@@ -559,10 +486,10 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: temAcessosClarity || temUsuariosUnicos },
+                        legend: { display: temAcessosAnalytics || temUsuariosUnicos },
                         title: {
                             display: true,
-                            text: temAcessosClarity || temUsuariosUnicos ? 'Leads Totais vs Acessos e Usuários Únicos (Clarity) por Sub2' : 'Todos os Leads por Sub2'
+                            text: temAcessosAnalytics || temUsuariosUnicos ? 'Leads Totais vs Acessos e Usuários Únicos (Google Analytics) por Sub2' : 'Todos os Leads por Sub2'
                         },
                         tooltip: {
                             callbacks: {
@@ -576,11 +503,11 @@
                                     let tooltipLines = [];
                                     
                                     if (acessos > 0) {
-                                        tooltipLines.push(`Acessos (Clarity): ${acessos.toLocaleString('pt-BR')}`);
+                                        tooltipLines.push(`Acessos (Google Analytics): ${acessos.toLocaleString('pt-BR')}`);
                                         const taxaConversao = ((conversoes / acessos) * 100).toFixed(2);
                                         tooltipLines.push(`Taxa de Conversão: ${taxaConversao}%`);
                                     } else {
-                                        tooltipLines.push('Acessos (Clarity): Não disponível');
+                                        tooltipLines.push('Acessos (Google Analytics): Não disponível');
                                     }
                                     
                                     if (usuariosUnicos > 0) {
@@ -615,8 +542,8 @@
                 borderWidth: 2
             }];
             
-            // Adicionar taxa de conversão se houver dados do Clarity
-            if (temAcessosClarity) {
+            // Adicionar taxa de conversão se houver dados do Google Analytics
+            if (temAcessosAnalytics) {
                 datasetsConversoes.push({
                     label: 'Taxa de Conversão (%)',
                     data: metricas.map(m => m.taxaConversao || 0),
@@ -640,10 +567,10 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: temAcessosClarity },
+                        legend: { display: temAcessosAnalytics },
                         title: {
                             display: true,
-                            text: temAcessosClarity ? 'Leads Aprovados e Taxa de Conversão por Sub2' : 'Todos os Leads Aprovados por Sub2'
+                            text: temAcessosAnalytics ? 'Leads Aprovados e Taxa de Conversão por Sub2' : 'Todos os Leads Aprovados por Sub2'
                         },
                         tooltip: {
                             callbacks: {
@@ -657,12 +584,12 @@
                                     let tooltipLines = [];
                                     
                                     if (acessos > 0) {
-                                        tooltipLines.push(`Acessos (Clarity): ${acessos.toLocaleString('pt-BR')}`);
+                                        tooltipLines.push(`Acessos (Google Analytics): ${acessos.toLocaleString('pt-BR')}`);
                                         const taxaConversao = ((conversoes / acessos) * 100).toFixed(2);
                                         tooltipLines.push(`Taxa de Conversão: ${taxaConversao}%`);
                                         tooltipLines.push(`(${conversoes} conversões de ${acessos.toLocaleString('pt-BR')} acessos)`);
                                     } else {
-                                        tooltipLines.push('Acessos (Clarity): Não disponível');
+                                        tooltipLines.push('Acessos (Google Analytics): Não disponível');
                                     }
                                     
                                     if (usuariosUnicos > 0) {
@@ -689,7 +616,7 @@
                                 text: 'Leads Aprovados'
                             }
                         },
-                        ...(temAcessosClarity ? {
+                        ...(temAcessosAnalytics ? {
                             y1: {
                                 type: 'linear',
                                 position: 'right',
@@ -847,7 +774,7 @@
             const taxaCambio = parseFloat(document.getElementById('taxaCambio').value) || 5.38;
 
             metricas.forEach(metrica => {
-                // Taxa de conversão já vem calculada do backend (baseada em acessos do Clarity se disponível)
+                // Taxa de conversão já vem calculada do backend (baseada em acessos do Google Analytics se disponível)
                 const taxaConversao = metrica.taxaConversao || 0;
                 const taxaConversaoUnicos = metrica.taxaConversaoUnicos || 0;
                 const acessosClarity = metrica.acessosClarity || 0;
