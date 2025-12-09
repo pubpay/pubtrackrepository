@@ -5,3 +5,10 @@ node_modules/
 
 database/data.db
 database/*.db
+
+# Google Analytics credentials (não commitar chaves!)
+pubpay-*.json
+*-credentials.json
+*.json
+!package.json
+!package-lock.json

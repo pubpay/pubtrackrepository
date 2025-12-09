@@ -318,19 +318,7 @@ try {
         }
       });
 
-      // Criar tabela para controlar requisições do Clarity
-      db.run(`CREATE TABLE IF NOT EXISTS clarity_requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        data DATE NOT NULL UNIQUE,
-        requisicoes_feitas INTEGER DEFAULT 0,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`, (err) => {
-        if (err) {
-          console.error('❌ Erro ao criar tabela clarity_requests:', err.message);
-        } else {
-          console.log('✅ Tabela clarity_requests criada/verificada');
-        }
-      });
+      // Tabela clarity_requests removida - usando apenas Google Analytics agora
     }
   });
 } catch (dbErr) {
@@ -2834,175 +2822,9 @@ app.get('/api/debug/offer-sub2', (req, res) => {
   });
 });
 
-// Token do Clarity (deve ser configurado via variável de ambiente em produção)
-const CLARITY_TOKEN = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjQ4M0FCMDhFNUYwRDMxNjdEOTRFMTQ3M0FEQTk2RTcyRDkwRUYwRkYiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiI5NmQyMWU3Ny1kYWUyLTRlNjAtOTZkNy0yNjRlYTMwMWQ4YmEiLCJzdWIiOiIzMDk4NDg1NTg5NDEyMTA1Iiwic2NvcGUiOiJEYXRhLkV4cG9ydCIsIm5iZiI6MTc2NTE5OTM1MiwiZXhwIjo0OTE4Nzk5MzUxLCJpYXQiOjE3NjUxOTkzNTEsImlzcyI6ImNsYXJpdHkiLCJhdWQiOiJjbGFyaXR5LmRhdGEtZXhwb3J0ZXIifQ.LO7vlz4mRHRA758Hj4ov2R-4xEBBx6ARisKdx2N0-pFsg36Klic_dzl1TglRftBQcVnmPgQnH05H_xk8YaHbpSpZ304YcOwjpuhD1d_jbAN22JsqBJkw8n00m3bxBExSOxoke4FOMeep0H7zWFBAws9CaYJl6oijxym7-X19FMIcytgKI_wdFYS9GoFWwMiyibfWB2uMb9Zogp-vR1M5jpjsvK9QtrGcrjSvet-Mhl8y4gPuEEJ0ypzBLTaTV1K8Px9Jk37bzXWNGkqukATYmytl0-goo-Xvg7Uixw59RI0AEocfMOmjaYMwbYnEqyX2A5fyil54WTIQ0I0qEN1AMg';
-
-// Função para fazer uma única requisição à API do Clarity
-function fetchClarityDataSingle(numOfDays = 1, dimension1 = 'URL') {
-  return new Promise((resolve, reject) => {
-    const url = `https://www.clarity.ms/export-data/api/v1/project-live-insights?numOfDays=${numOfDays}&dimension1=${dimension1}`;
-    
-    const options = {
-      headers: {
-        'Authorization': `Bearer ${CLARITY_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
-    };
-
-    https.get(url, options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        console.log(`📡 Resposta da API do Clarity:`);
-        console.log(`   Status Code: ${res.statusCode}`);
-        console.log(`   Tamanho da resposta: ${data.length} bytes`);
-        console.log(`   Primeiros 500 caracteres: ${data.substring(0, 500)}`);
-        
-        if (res.statusCode === 200) {
-          try {
-            const jsonData = JSON.parse(data);
-            console.log(`✅ Resposta parseada com sucesso`);
-            resolve(jsonData);
-          } catch (err) {
-            console.error(`❌ Erro ao parsear JSON:`, err.message);
-            console.error(`   Resposta completa:`, data);
-            reject(new Error(`Erro ao parsear resposta: ${err.message}`));
-          }
-        } else {
-          console.error(`❌ Erro na API do Clarity: ${res.statusCode}`);
-          console.error(`   Resposta:`, data);
-          reject(new Error(`Erro na API do Clarity: ${res.statusCode} - ${data.substring(0, 500)}`));
-        }
-      });
-    }).on('error', (err) => {
-      reject(new Error(`Erro na requisição: ${err.message}`));
-    });
-  });
-}
-
-// Função para fazer requisição à API do Clarity com paginação automática
-// A API do Clarity limita a 999 registros por requisição, então fazemos múltiplas requisições
-async function fetchClarityData(numOfDays = 1, dimension1 = 'URL') {
-  console.log(`\n🔄 Iniciando busca de dados do Clarity (${numOfDays} dia(s))`);
-  
-  const allData = [];
-  const processedUrls = new Map(); // Map para armazenar URL -> info (para evitar duplicatas e manter o mais recente)
-  
-  // Fazer requisição inicial
-  let data = await fetchClarityDataSingle(numOfDays, dimension1);
-  
-  // Processar dados iniciais
-  if (Array.isArray(data)) {
-    for (const metric of data) {
-      if (metric.metricName === 'Traffic' && Array.isArray(metric.information)) {
-        for (const info of metric.information) {
-          const url = info.URL || info.url || info.pageUrl || info.Url || null;
-          if (url) {
-            processedUrls.set(url, info);
-          }
-        }
-      }
-    }
-  }
-  
-  // Verificar se retornou 999 registros (limite da API)
-  let totalRecords = 0;
-  if (Array.isArray(data)) {
-    for (const metric of data) {
-      if (metric.metricName === 'Traffic' && Array.isArray(metric.information)) {
-        totalRecords = metric.information.length;
-        break;
-      }
-    }
-  }
-  
-  // Se retornou exatamente 999, provavelmente há mais dados
-  // Vamos fazer requisições adicionais dividindo o período em partes menores
-  if (totalRecords >= 999) {
-    console.log(`⚠️ A API retornou ${totalRecords} registros (limite de 999 atingido).`);
-    console.log(`   Fazendo requisições adicionais para obter todos os dados...`);
-    
-    // Estratégia: fazer múltiplas requisições dividindo o período em partes menores
-    // Se numOfDays > 1, dividir em requisições de 1 dia cada
-    // Se numOfDays = 1, fazer algumas requisições adicionais para tentar pegar mais dados
-    const requestsToMake = numOfDays > 1 ? numOfDays : 3; // Se 1 dia, fazer 3 tentativas adicionais
-    const maxAttempts = Math.min(requestsToMake, 7); // Limitar a 7 tentativas para não exceder o limite de requisições
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        // Se numOfDays > 1, fazer requisições de 1 dia cada
-        // Se numOfDays = 1, fazer requisições de 1 dia (mesmo período, mas pode haver variação)
-        const daysForRequest = numOfDays > 1 ? 1 : 1;
-        
-        console.log(`   📅 Tentativa ${attempt}/${maxAttempts}: buscando dados adicionais (${daysForRequest} dia(s))...`);
-        const additionalData = await fetchClarityDataSingle(daysForRequest, dimension1);
-        
-        let foundNew = false;
-        let newRecordsCount = 0;
-        if (Array.isArray(additionalData)) {
-          for (const metric of additionalData) {
-            if (metric.metricName === 'Traffic' && Array.isArray(metric.information)) {
-              for (const info of metric.information) {
-                const url = info.URL || info.url || info.pageUrl || info.Url || null;
-                if (url && !processedUrls.has(url)) {
-                  processedUrls.set(url, info);
-                  foundNew = true;
-                  newRecordsCount++;
-                }
-              }
-            }
-          }
-        }
-        
-        console.log(`   📊 Tentativa ${attempt}: ${newRecordsCount} novos registros encontrados (total: ${processedUrls.size})`);
-        
-        // Se não encontrou novos registros e já temos muitos, provavelmente já temos tudo
-        if (!foundNew && processedUrls.size >= 999) {
-          console.log(`   ✅ Não foram encontrados novos registros. Parando busca.`);
-          break;
-        }
-        
-        // Pequeno delay entre requisições para não sobrecarregar a API
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (err) {
-        console.error(`   ❌ Erro na tentativa ${attempt}:`, err.message);
-        // Continuar mesmo com erro
-      }
-    }
-  }
-  
-  // Construir resposta no formato esperado
-  if (processedUrls.size > 0) {
-    const trafficMetric = {
-      metricName: 'Traffic',
-      information: Array.from(processedUrls.values())
-    };
-    allData.push(trafficMetric);
-    
-    // Preservar outras métricas da resposta original (se houver)
-    if (Array.isArray(data)) {
-      for (const metric of data) {
-        if (metric.metricName !== 'Traffic') {
-          allData.push(metric);
-        }
-      }
-    }
-  } else {
-    // Se não processou nada, retornar dados originais
-    allData.push(...(Array.isArray(data) ? data : []));
-  }
-  
-  console.log(`✅ Total de registros únicos coletados: ${processedUrls.size}`);
-  return allData;
-}
-
-// Função para extrair identificador da URL do Clarity
+// Função para extrair identificador da URL (usado para Google Analytics)
 // Exemplo: https://news.wellhubus.com/ldr/gota/f01/vsl/gta-vsl2-ld1/index.php -> gta-vsl2-ld1
-function extractIdentifierFromClarityUrl(url) {
+function extractIdentifierFromUrl(url) {
   if (!url) return null;
   
   try {
@@ -3036,7 +2858,6 @@ function extractIdentifierFromClarityUrl(url) {
 
 // Função para normalizar sub2 removendo -pr2 ou pr2 no final
 // Exemplo: gta-vsl2-ld1-pr2 -> gta-vsl2-ld1
-// Exemplo: gta-vsl2-mn2pr2 -> gta-vsl2-mn2 (mas na verdade deveria ser gta-vsl2-mn3 baseado no exemplo)
 function normalizeSub2(sub2) {
   if (!sub2) return null;
   
@@ -3053,8 +2874,8 @@ function normalizeSub2(sub2) {
 function extractSub2FromUrl(url) {
   if (!url) return null;
   
-  // Primeiro tentar extrair do caminho da URL (formato Clarity)
-  const identifier = extractIdentifierFromClarityUrl(url);
+  // Primeiro tentar extrair do caminho da URL
+  const identifier = extractIdentifierFromUrl(url);
   if (identifier) {
     return identifier;
   }
@@ -3099,7 +2920,8 @@ function findCredentialsFile() {
   
   // Procurar arquivos JSON de credenciais no diretório raiz
   const possibleFiles = [
-    'pubpay-480613-eb0b8057a62f.json', // Arquivo específico encontrado
+    'pubpay-480613-bda9dce048e4.json', // Arquivo específico encontrado (nova chave)
+    'pubpay-480613-eb0b8057a62f.json', // Arquivo antigo (mantido para compatibilidade)
     'credentials.json',
     'ga-credentials.json',
     'google-analytics-credentials.json',
@@ -3261,259 +3083,6 @@ async function fetchGoogleAnalyticsData(startDate, endDate) {
   }
 }
 
-// Rota para obter contador de requisições do Clarity
-app.get('/api/clarity/requests-count', (req, res) => {
-  if (!db) {
-    return res.status(500).json({ error: 'Banco de dados não disponível' });
-  }
-
-  const today = getTodayDate();
-  
-  db.get('SELECT requisicoes_feitas FROM clarity_requests WHERE data = ?', [today], (err, row) => {
-    if (err) {
-      console.error('❌ Erro ao buscar contador de requisições:', err.message);
-      return res.status(500).json({ error: 'Erro ao buscar contador', details: err.message });
-    }
-
-    const requisicoesFeitas = row ? row.requisicoes_feitas : 0;
-    const requisicoesRestantes = Math.max(0, 10 - requisicoesFeitas);
-
-    res.json({
-      success: true,
-      requisicoesFeitas,
-      requisicoesRestantes,
-      limiteDiario: 10,
-      data: today
-    });
-  });
-});
-
-// Rota para buscar e atualizar dados do Clarity
-app.post('/api/clarity/update', async (req, res) => {
-  if (!db) {
-    return res.status(500).json({ error: 'Banco de dados não disponível' });
-  }
-
-  const today = getTodayDate();
-  const numOfDays = req.body.numOfDays || 1;
-
-  // Verificar se ainda há requisições disponíveis
-  db.get('SELECT requisicoes_feitas FROM clarity_requests WHERE data = ?', [today], (err, row) => {
-    if (err) {
-      console.error('❌ Erro ao verificar contador:', err.message);
-      return res.status(500).json({ error: 'Erro ao verificar contador', details: err.message });
-    }
-
-    const requisicoesFeitas = row ? row.requisicoes_feitas : 0;
-    
-    if (requisicoesFeitas >= 10) {
-      return res.status(429).json({ 
-        error: 'Limite diário atingido',
-        message: 'Você já fez 10 requisições hoje. O limite será resetado amanhã.',
-        requisicoesFeitas,
-        requisicoesRestantes: 0
-      });
-    }
-
-    // Fazer requisição à API do Clarity
-    fetchClarityData(numOfDays, 'URL')
-      .then(async (clarityData) => {
-        console.log('✅ Dados recebidos do Clarity');
-        console.log('📋 Estrutura completa da resposta:', JSON.stringify(clarityData, null, 2));
-        console.log('📊 Tipo:', Array.isArray(clarityData) ? 'Array' : typeof clarityData);
-        console.log('📊 Tamanho:', Array.isArray(clarityData) ? clarityData.length : 'N/A');
-
-        // Processar dados e armazenar no banco
-        const insertPromises = [];
-        let totalProcessados = 0;
-        let totalComUrl = 0;
-        
-        // A resposta é um array de objetos com metricName e information
-        if (!Array.isArray(clarityData)) {
-          console.error('❌ Resposta do Clarity não é um array:', typeof clarityData);
-          return res.status(500).json({ 
-            error: 'Formato de resposta inválido',
-            details: 'A resposta da API não está no formato esperado'
-          });
-        }
-        
-        for (const metric of clarityData) {
-          console.log(`\n🔍 Processando métrica: ${metric.metricName || 'N/A'}`);
-          
-          // Buscar métrica "Traffic" conforme documentação
-          if (metric.metricName === 'Traffic' && metric.information && Array.isArray(metric.information)) {
-            console.log(`   📈 Encontrada métrica Traffic com ${metric.information.length} registros`);
-            
-            for (const info of metric.information) {
-              totalProcessados++;
-              
-              // Quando dimension1=URL, a propriedade deve ser "URL" (maiúscula)
-              // Conforme documentação: "Possible dimensions: URL"
-              const url = info.URL || info.url || info.pageUrl || info.Url || null;
-              
-              if (!url) {
-                console.log(`   ⚠️ Registro ${totalProcessados} sem URL. Propriedades disponíveis:`, Object.keys(info));
-                continue;
-              }
-              
-              totalComUrl++;
-              const acessos = parseInt(info.totalSessionCount || 0) || 0;
-              const usuariosUnicos = parseInt(info.distantUserCount || 0) || 0;
-              
-              // Extrair identificador da URL do Clarity (ex: gta-vsl2-ld1 de /vsl/gta-vsl2-ld1/index.php)
-              const identifierFromUrl = extractIdentifierFromClarityUrl(url);
-              
-              console.log(`   📊 Processando URL: ${url}`);
-              console.log(`      Identificador extraído: ${identifierFromUrl}`);
-              console.log(`      Acessos (totalSessionCount): ${acessos}`);
-              console.log(`      Usuários Únicos (distantUserCount): ${usuariosUnicos}`);
-              console.log(`      Dados completos:`, JSON.stringify(info, null, 2));
-              
-              if (!identifierFromUrl) {
-                console.log(`   ⚠️ Não foi possível extrair identificador da URL: ${url}`);
-                continue;
-              }
-              
-              // Armazenar o identificador extraído da URL como sub2
-              // Este será usado para fazer match com sub2 da LeadRock (que pode ter -pr2 ou pr2 no final)
-              const sub2 = identifierFromUrl;
-
-              // Inserir ou atualizar dados (SQLite usa INSERT OR REPLACE ou verificação manual)
-              // Primeiro verificar se já existe
-              const checkSql = 'SELECT id FROM clarity_data WHERE url = ? AND data_coleta = ?';
-              const insertSql = `
-                INSERT INTO clarity_data (url, sub2, acessos, usuarios_unicos, data_coleta, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
-              `;
-              const updateSql = `
-                UPDATE clarity_data 
-                SET acessos = ?, usuarios_unicos = ?, sub2 = ?, updated_at = datetime('now')
-                WHERE url = ? AND data_coleta = ?
-              `;
-              
-              console.log(`   💾 Preparando para salvar: url="${url}", sub2="${sub2}", acessos=${acessos}, usuarios_unicos=${usuariosUnicos}, data="${today}"`);
-              
-              insertPromises.push(
-                new Promise((resolve, reject) => {
-                  // Verificar se já existe
-                  db.get(checkSql, [url, today], (err, existing) => {
-                    if (err) {
-                      console.error(`   ❌ Erro ao verificar dados do Clarity para URL ${url}:`, err.message);
-                      reject(err);
-                      return;
-                    }
-                    
-                      if (existing) {
-                        console.log(`   🔄 Atualizando registro existente (ID: ${existing.id})`);
-                        // Atualizar registro existente
-                        db.run(updateSql, [acessos, usuariosUnicos, sub2, url, today], function(err) {
-                        if (err) {
-                          console.error(`   ❌ Erro ao atualizar dados do Clarity:`, err.message);
-                          reject(err);
-                        } else {
-                          console.log(`   ✅ Registro atualizado com sucesso (linhas afetadas: ${this.changes})`);
-                          resolve();
-                        }
-                      });
-                      } else {
-                        console.log(`   ➕ Inserindo novo registro`);
-                        // Inserir novo registro
-                        db.run(insertSql, [url, sub2, acessos, usuariosUnicos, today], function(err) {
-                        if (err) {
-                          console.error(`   ❌ Erro ao inserir dados do Clarity:`, err.message);
-                          console.error(`   SQL: ${insertSql}`);
-                          console.error(`   Parâmetros: [${url}, ${sub2}, ${acessos}, ${today}]`);
-                          reject(err);
-                        } else {
-                          console.log(`   ✅ Registro inserido com sucesso (ID: ${this.lastID}, linhas afetadas: ${this.changes})`);
-                          resolve();
-                        }
-                      });
-                    }
-                  });
-                })
-              );
-            }
-          }
-        }
-        
-        // Se não encontrou métrica Traffic, listar todas as métricas disponíveis
-        if (totalProcessados === 0) {
-          console.log(`\n⚠️ Nenhuma métrica "Traffic" encontrada. Métricas disponíveis:`);
-          clarityData.forEach((m, idx) => {
-            console.log(`   ${idx + 1}. ${m.metricName || 'Sem nome'} - ${m.information ? m.information.length : 0} registros`);
-          });
-        }
-
-        console.log(`\n📊 Resumo do processamento:`);
-        console.log(`   Total de registros processados: ${totalProcessados}`);
-        console.log(`   Registros com URL: ${totalComUrl}`);
-        console.log(`   Registros a inserir/atualizar: ${insertPromises.length}`);
-        
-        if (insertPromises.length === 0) {
-          console.log(`\n⚠️ Nenhum registro será inserido. Verifique:`);
-          console.log(`   1. Se há dados no Clarity para o período selecionado`);
-          console.log(`   2. Se a dimensão URL está retornando dados`);
-          console.log(`   3. Se as URLs estão no formato esperado`);
-        }
-        
-        // Aguardar todas as inserções
-        if (insertPromises.length > 0) {
-          console.log(`\n💾 Iniciando salvamento de ${insertPromises.length} registros...`);
-          try {
-            await Promise.all(insertPromises);
-            console.log(`✅ ${insertPromises.length} registros do Clarity salvos/atualizados com sucesso`);
-          } catch (err) {
-            console.error(`❌ Erro ao salvar registros do Clarity:`, err.message);
-            console.error(`   Stack:`, err.stack);
-            // Continuar mesmo com erros parciais
-          }
-        } else {
-          console.log(`\n⚠️ Nenhum registro para salvar. Verifique os logs acima para entender o motivo.`);
-        }
-
-        // Atualizar contador de requisições
-        const updateCounterSql = `
-          INSERT INTO clarity_requests (data, requisicoes_feitas, updated_at)
-          VALUES (?, 1, datetime('now'))
-          ON CONFLICT(data) 
-          DO UPDATE SET 
-            requisicoes_feitas = requisicoes_feitas + 1,
-            updated_at = datetime('now')
-        `;
-
-        db.run(updateCounterSql, [today], (err) => {
-          if (err) {
-            console.error('❌ Erro ao atualizar contador:', err.message);
-          } else {
-            console.log('✅ Contador de requisições atualizado');
-          }
-        });
-
-        // Buscar contador atualizado
-        db.get('SELECT requisicoes_feitas FROM clarity_requests WHERE data = ?', [today], (err, updatedRow) => {
-          const novasRequisicoesFeitas = updatedRow ? updatedRow.requisicoes_feitas : requisicoesFeitas + 1;
-          const novasRequisicoesRestantes = Math.max(0, 10 - novasRequisicoesFeitas);
-
-          res.json({
-            success: true,
-            message: 'Dados do Clarity atualizados com sucesso',
-            registrosInseridos: insertPromises.length,
-            requisicoesFeitas: novasRequisicoesFeitas,
-            requisicoesRestantes: novasRequisicoesRestantes,
-            limiteDiario: 10
-          });
-        });
-      })
-      .catch((error) => {
-        console.error('❌ Erro ao buscar dados do Clarity:', error.message);
-        res.status(500).json({ 
-          error: 'Erro ao buscar dados do Clarity',
-          details: error.message
-        });
-      });
-  });
-});
 
 // API para buscar distribuição de leads por horário
 app.get('/api/metricas/horarios', (req, res) => {
@@ -3702,6 +3271,20 @@ app.post('/api/analytics/update', async (req, res) => {
     console.log(`\n🔄 Iniciando atualização de dados do Google Analytics`);
     console.log(`   Período: ${startDate} até ${endDate} (${numOfDays} dia(s))`);
     
+    // Limpar dados antigos do Clarity do dia atual antes de inserir do Google Analytics
+    // Isso garante que os dados mais recentes do Google Analytics sejam usados
+    await new Promise((resolve, reject) => {
+      db.run('DELETE FROM clarity_data WHERE data_coleta = ?', [today], function(err) {
+        if (err) {
+          console.error('⚠️ Erro ao limpar dados antigos:', err.message);
+          // Não rejeitar, apenas logar o erro e continuar
+        } else {
+          console.log(`✅ Dados antigos removidos para a data ${today} (${this.changes} registros removidos)`);
+        }
+        resolve();
+      });
+    });
+    
     // Buscar dados do Google Analytics
     const gaData = await fetchGoogleAnalyticsData(startDate, endDate);
     
@@ -3726,8 +3309,8 @@ app.post('/api/analytics/update', async (req, res) => {
       const acessos = parseInt(info.totalSessionCount || 0) || 0;
       const usuariosUnicos = parseInt(info.distantUserCount || 0) || 0;
       
-      // Extrair identificador da URL (sub2) - usando a mesma função do Clarity
-      const identifierFromUrl = extractIdentifierFromClarityUrl(url);
+      // Extrair identificador da URL (sub2)
+      const identifierFromUrl = extractIdentifierFromUrl(url);
       
       console.log(`   📊 Processando URL: ${url}`);
       console.log(`      Identificador extraído: ${identifierFromUrl}`);
