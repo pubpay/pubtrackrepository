@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const https = require('https');
+const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -97,6 +98,13 @@ try {
     } else {
       console.log('✅ Conectado ao banco de dados SQLite');
       console.log('📁 Caminho do banco:', dbPath);
+      
+      // Configurar SQLite para não limitar resultados (remover qualquer limite padrão)
+      // SQLite não tem limite padrão de 999, mas vamos garantir que não há limitações
+      db.run("PRAGMA page_size = 4096", (err) => {
+        if (err) console.error('❌ Erro ao configurar page_size:', err.message);
+      });
+      
       // Criar tabelas se não existirem
       db.run(`CREATE TABLE IF NOT EXISTS conversions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2829,8 +2837,8 @@ app.get('/api/debug/offer-sub2', (req, res) => {
 // Token do Clarity (deve ser configurado via variável de ambiente em produção)
 const CLARITY_TOKEN = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjQ4M0FCMDhFNUYwRDMxNjdEOTRFMTQ3M0FEQTk2RTcyRDkwRUYwRkYiLCJ0eXAiOiJKV1QifQ.eyJqdGkiOiI5NmQyMWU3Ny1kYWUyLTRlNjAtOTZkNy0yNjRlYTMwMWQ4YmEiLCJzdWIiOiIzMDk4NDg1NTg5NDEyMTA1Iiwic2NvcGUiOiJEYXRhLkV4cG9ydCIsIm5iZiI6MTc2NTE5OTM1MiwiZXhwIjo0OTE4Nzk5MzUxLCJpYXQiOjE3NjUxOTkzNTEsImlzcyI6ImNsYXJpdHkiLCJhdWQiOiJjbGFyaXR5LmRhdGEtZXhwb3J0ZXIifQ.LO7vlz4mRHRA758Hj4ov2R-4xEBBx6ARisKdx2N0-pFsg36Klic_dzl1TglRftBQcVnmPgQnH05H_xk8YaHbpSpZ304YcOwjpuhD1d_jbAN22JsqBJkw8n00m3bxBExSOxoke4FOMeep0H7zWFBAws9CaYJl6oijxym7-X19FMIcytgKI_wdFYS9GoFWwMiyibfWB2uMb9Zogp-vR1M5jpjsvK9QtrGcrjSvet-Mhl8y4gPuEEJ0ypzBLTaTV1K8Px9Jk37bzXWNGkqukATYmytl0-goo-Xvg7Uixw59RI0AEocfMOmjaYMwbYnEqyX2A5fyil54WTIQ0I0qEN1AMg';
 
-// Função para fazer requisição à API do Clarity
-function fetchClarityData(numOfDays = 1, dimension1 = 'URL') {
+// Função para fazer uma única requisição à API do Clarity
+function fetchClarityDataSingle(numOfDays = 1, dimension1 = 'URL') {
   return new Promise((resolve, reject) => {
     const url = `https://www.clarity.ms/export-data/api/v1/project-live-insights?numOfDays=${numOfDays}&dimension1=${dimension1}`;
     
@@ -2874,6 +2882,122 @@ function fetchClarityData(numOfDays = 1, dimension1 = 'URL') {
       reject(new Error(`Erro na requisição: ${err.message}`));
     });
   });
+}
+
+// Função para fazer requisição à API do Clarity com paginação automática
+// A API do Clarity limita a 999 registros por requisição, então fazemos múltiplas requisições
+async function fetchClarityData(numOfDays = 1, dimension1 = 'URL') {
+  console.log(`\n🔄 Iniciando busca de dados do Clarity (${numOfDays} dia(s))`);
+  
+  const allData = [];
+  const processedUrls = new Map(); // Map para armazenar URL -> info (para evitar duplicatas e manter o mais recente)
+  
+  // Fazer requisição inicial
+  let data = await fetchClarityDataSingle(numOfDays, dimension1);
+  
+  // Processar dados iniciais
+  if (Array.isArray(data)) {
+    for (const metric of data) {
+      if (metric.metricName === 'Traffic' && Array.isArray(metric.information)) {
+        for (const info of metric.information) {
+          const url = info.URL || info.url || info.pageUrl || info.Url || null;
+          if (url) {
+            processedUrls.set(url, info);
+          }
+        }
+      }
+    }
+  }
+  
+  // Verificar se retornou 999 registros (limite da API)
+  let totalRecords = 0;
+  if (Array.isArray(data)) {
+    for (const metric of data) {
+      if (metric.metricName === 'Traffic' && Array.isArray(metric.information)) {
+        totalRecords = metric.information.length;
+        break;
+      }
+    }
+  }
+  
+  // Se retornou exatamente 999, provavelmente há mais dados
+  // Vamos fazer requisições adicionais dividindo o período em partes menores
+  if (totalRecords >= 999) {
+    console.log(`⚠️ A API retornou ${totalRecords} registros (limite de 999 atingido).`);
+    console.log(`   Fazendo requisições adicionais para obter todos os dados...`);
+    
+    // Estratégia: fazer múltiplas requisições dividindo o período em partes menores
+    // Se numOfDays > 1, dividir em requisições de 1 dia cada
+    // Se numOfDays = 1, fazer algumas requisições adicionais para tentar pegar mais dados
+    const requestsToMake = numOfDays > 1 ? numOfDays : 3; // Se 1 dia, fazer 3 tentativas adicionais
+    const maxAttempts = Math.min(requestsToMake, 7); // Limitar a 7 tentativas para não exceder o limite de requisições
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // Se numOfDays > 1, fazer requisições de 1 dia cada
+        // Se numOfDays = 1, fazer requisições de 1 dia (mesmo período, mas pode haver variação)
+        const daysForRequest = numOfDays > 1 ? 1 : 1;
+        
+        console.log(`   📅 Tentativa ${attempt}/${maxAttempts}: buscando dados adicionais (${daysForRequest} dia(s))...`);
+        const additionalData = await fetchClarityDataSingle(daysForRequest, dimension1);
+        
+        let foundNew = false;
+        let newRecordsCount = 0;
+        if (Array.isArray(additionalData)) {
+          for (const metric of additionalData) {
+            if (metric.metricName === 'Traffic' && Array.isArray(metric.information)) {
+              for (const info of metric.information) {
+                const url = info.URL || info.url || info.pageUrl || info.Url || null;
+                if (url && !processedUrls.has(url)) {
+                  processedUrls.set(url, info);
+                  foundNew = true;
+                  newRecordsCount++;
+                }
+              }
+            }
+          }
+        }
+        
+        console.log(`   📊 Tentativa ${attempt}: ${newRecordsCount} novos registros encontrados (total: ${processedUrls.size})`);
+        
+        // Se não encontrou novos registros e já temos muitos, provavelmente já temos tudo
+        if (!foundNew && processedUrls.size >= 999) {
+          console.log(`   ✅ Não foram encontrados novos registros. Parando busca.`);
+          break;
+        }
+        
+        // Pequeno delay entre requisições para não sobrecarregar a API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (err) {
+        console.error(`   ❌ Erro na tentativa ${attempt}:`, err.message);
+        // Continuar mesmo com erro
+      }
+    }
+  }
+  
+  // Construir resposta no formato esperado
+  if (processedUrls.size > 0) {
+    const trafficMetric = {
+      metricName: 'Traffic',
+      information: Array.from(processedUrls.values())
+    };
+    allData.push(trafficMetric);
+    
+    // Preservar outras métricas da resposta original (se houver)
+    if (Array.isArray(data)) {
+      for (const metric of data) {
+        if (metric.metricName !== 'Traffic') {
+          allData.push(metric);
+        }
+      }
+    }
+  } else {
+    // Se não processou nada, retornar dados originais
+    allData.push(...(Array.isArray(data) ? data : []));
+  }
+  
+  console.log(`✅ Total de registros únicos coletados: ${processedUrls.size}`);
+  return allData;
 }
 
 // Função para extrair identificador da URL do Clarity
@@ -2944,6 +3068,196 @@ function extractSub2FromUrl(url) {
     // Se não for uma URL válida, tentar extrair de outros formatos
     const match = url.match(/[?&](?:sub2|sub_id2|sub_id_2)=([^&]+)/i);
     return match ? match[1] : null;
+  }
+}
+
+// ============================================
+// GOOGLE ANALYTICS - FUNÇÕES
+// ============================================
+// Configurações do Google Analytics (deve ser configurado via variável de ambiente em produção)
+// O Property ID pode ser encontrado em: Admin > Property Settings > Property ID
+const GA_PROPERTY_ID = process.env.GA_PROPERTY_ID || '514283157'; // ID da propriedade GA4
+const GA_CREDENTIALS = process.env.GA_CREDENTIALS || ''; // JSON string das credenciais do Service Account
+const GA_BASE_URL = process.env.GA_BASE_URL || 'https://news.wellhubus.com'; // URL base do site
+
+// Função para encontrar arquivo de credenciais automaticamente
+function findCredentialsFile() {
+  // Primeiro, tentar usar variável de ambiente
+  if (GA_CREDENTIALS) {
+    // Se for um caminho de arquivo válido
+    if (fs.existsSync(GA_CREDENTIALS)) {
+      return GA_CREDENTIALS;
+    }
+    // Se for JSON string, retornar null para processar depois
+    try {
+      JSON.parse(GA_CREDENTIALS);
+      return null; // É JSON string, não arquivo
+    } catch (e) {
+      // Não é JSON válido nem arquivo válido
+    }
+  }
+  
+  // Procurar arquivos JSON de credenciais no diretório raiz
+  const possibleFiles = [
+    'pubpay-480613-eb0b8057a62f.json', // Arquivo específico encontrado
+    'credentials.json',
+    'ga-credentials.json',
+    'google-analytics-credentials.json',
+    'service-account.json'
+  ];
+  
+  for (const filename of possibleFiles) {
+    const filePath = path.join(__dirname, filename);
+    if (fs.existsSync(filePath)) {
+      console.log(`✅ Arquivo de credenciais encontrado: ${filename}`);
+      return filePath;
+    }
+  }
+  
+  // Procurar qualquer arquivo JSON que pareça ser credenciais do Google
+  try {
+    const files = fs.readdirSync(__dirname);
+    for (const file of files) {
+      if (file.endsWith('.json') && file !== 'package.json' && file !== 'package-lock.json') {
+        const filePath = path.join(__dirname, file);
+        try {
+          const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          if (content.type === 'service_account' && content.client_email) {
+            console.log(`✅ Arquivo de credenciais encontrado: ${file}`);
+            return filePath;
+          }
+        } catch (e) {
+          // Não é JSON válido ou não é service account
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao procurar arquivos JSON:', err.message);
+  }
+  
+  return null;
+}
+
+// Função para inicializar o cliente do Google Analytics
+function getGoogleAnalyticsClient() {
+  try {
+    let credentials = null;
+    
+    // Tentar obter credenciais da variável de ambiente (JSON string)
+    if (GA_CREDENTIALS) {
+      try {
+        credentials = JSON.parse(GA_CREDENTIALS);
+        console.log('✅ Credenciais carregadas da variável de ambiente');
+      } catch (e) {
+        // Não é JSON string, continuar para procurar arquivo
+      }
+    }
+    
+    // Se não encontrou nas variáveis de ambiente, procurar arquivo
+    if (!credentials) {
+      const credentialsFile = findCredentialsFile();
+      if (credentialsFile) {
+        try {
+          credentials = JSON.parse(fs.readFileSync(credentialsFile, 'utf8'));
+          console.log(`✅ Credenciais carregadas do arquivo: ${credentialsFile}`);
+        } catch (err) {
+          console.error(`❌ Erro ao ler arquivo de credenciais: ${err.message}`);
+        }
+      }
+    }
+    
+    if (!credentials) {
+      throw new Error('Credenciais do Google Analytics não encontradas. Configure GA_CREDENTIALS ou coloque um arquivo JSON no diretório raiz.');
+    }
+    
+    // Validar se é um service account válido
+    if (!credentials.type || credentials.type !== 'service_account') {
+      throw new Error('Arquivo de credenciais não é um Service Account válido');
+    }
+    
+    const auth = new google.auth.GoogleAuth({
+      credentials: credentials,
+      scopes: ['https://www.googleapis.com/auth/analytics.readonly']
+    });
+    
+    console.log(`✅ Cliente do Google Analytics inicializado com sucesso`);
+    console.log(`   Service Account: ${credentials.client_email}`);
+    return google.analyticsdata({ version: 'v1beta', auth });
+  } catch (err) {
+    console.error('❌ Erro ao inicializar cliente do Google Analytics:', err.message);
+    return null;
+  }
+}
+
+// Função para buscar dados do Google Analytics
+async function fetchGoogleAnalyticsData(startDate, endDate) {
+  const client = getGoogleAnalyticsClient();
+  if (!client) {
+    throw new Error('Cliente do Google Analytics não disponível');
+  }
+  
+  if (!GA_PROPERTY_ID) {
+    throw new Error('ID da propriedade do Google Analytics não configurado');
+  }
+  
+  try {
+    console.log(`📡 Buscando dados do Google Analytics de ${startDate} até ${endDate}`);
+    
+    const response = await client.properties.runReport({
+      property: `properties/${GA_PROPERTY_ID}`,
+      requestBody: {
+        dateRanges: [
+          {
+            startDate: startDate,
+            endDate: endDate
+          }
+        ],
+        dimensions: [
+          { name: 'pagePath' }, // Caminho da página
+          { name: 'pageTitle' }  // Título da página (opcional)
+        ],
+        metrics: [
+          { name: 'screenPageViews' },      // Acessos (equivalente a totalSessionCount)
+          { name: 'activeUsers' }           // Usuários únicos (equivalente a distantUserCount)
+        ],
+        limit: 100000, // Limite máximo do GA4
+        keepEmptyRows: false
+      }
+    });
+    
+    const rows = response.data.rows || [];
+    console.log(`✅ Google Analytics retornou ${rows.length} registros`);
+    
+    // Converter dados do GA4 para o formato esperado (similar ao Clarity)
+    const result = [];
+    for (const row of rows) {
+      const dimensionValues = row.dimensionValues || [];
+      const metricValues = row.metricValues || [];
+      
+      const pagePath = dimensionValues[0]?.value || '';
+      const pageTitle = dimensionValues[1]?.value || '';
+      const screenPageViews = parseInt(metricValues[0]?.value || '0');
+      const activeUsers = parseInt(metricValues[1]?.value || '0');
+      
+      if (pagePath) {
+        // Construir URL completa
+        const fullUrl = pagePath.startsWith('http') ? pagePath : `${GA_BASE_URL}${pagePath}`;
+        
+        result.push({
+          URL: fullUrl,
+          url: fullUrl,
+          pageUrl: fullUrl,
+          totalSessionCount: screenPageViews,
+          distantUserCount: activeUsers,
+          pageTitle: pageTitle
+        });
+      }
+    }
+    
+    return result;
+  } catch (err) {
+    console.error('❌ Erro ao buscar dados do Google Analytics:', err.message);
+    throw err;
   }
 }
 
@@ -3317,6 +3631,183 @@ if (fs.existsSync(indexPath)) {
   console.log('📁 Diretório atual:', __dirname);
   console.log('📁 Conteúdo de public:', fs.existsSync(path.join(__dirname, 'public')) ? 'existe' : 'não existe');
 }
+
+// ============================================
+// ROTAS DO GOOGLE ANALYTICS
+// ============================================
+
+// Rota para obter status do Google Analytics
+app.get('/api/analytics/status', (req, res) => {
+  try {
+    const hasPropertyId = !!GA_PROPERTY_ID && GA_PROPERTY_ID !== '';
+    
+    // Verificar credenciais de múltiplas formas
+    let hasCredentials = false;
+    let credentialsSource = 'nenhum';
+    
+    if (GA_CREDENTIALS) {
+      hasCredentials = true;
+      credentialsSource = 'variável de ambiente';
+    } else {
+      const credentialsFile = findCredentialsFile();
+      if (credentialsFile) {
+        hasCredentials = true;
+        credentialsSource = `arquivo: ${path.basename(credentialsFile)}`;
+      }
+    }
+    
+    // Considerar configurado se tiver Property ID e credenciais
+    const isConfigured = !!(hasPropertyId && hasCredentials);
+    
+    console.log(`📊 Status GA: Property ID=${hasPropertyId}, Credenciais=${hasCredentials} (${credentialsSource})`);
+    
+    res.json({
+      success: true,
+      configured: isConfigured,
+      propertyId: GA_PROPERTY_ID || 'Não configurado',
+      hasPropertyId: hasPropertyId,
+      hasCredentials: hasCredentials,
+      credentialsSource: credentialsSource,
+      message: isConfigured 
+        ? 'Google Analytics configurado e pronto para uso' 
+        : `Configure: ${!hasPropertyId ? 'GA_PROPERTY_ID ' : ''}${!hasCredentials ? 'Credenciais (arquivo JSON ou GA_CREDENTIALS)' : ''}`
+    });
+  } catch (err) {
+    console.error('❌ Erro ao verificar status:', err);
+    res.json({
+      success: false,
+      configured: false,
+      error: err.message,
+      message: 'Erro ao verificar configuração do Google Analytics'
+    });
+  }
+});
+
+// Rota para buscar e atualizar dados do Google Analytics
+app.post('/api/analytics/update', async (req, res) => {
+  if (!db) {
+    return res.status(500).json({ error: 'Banco de dados não disponível' });
+  }
+
+  const today = getTodayDate();
+  const numOfDays = req.body.numOfDays || 1;
+  
+  // Calcular datas
+  const endDate = today;
+  const startDateObj = new Date(today);
+  startDateObj.setDate(startDateObj.getDate() - (numOfDays - 1));
+  const startDate = startDateObj.toISOString().split('T')[0];
+
+  try {
+    console.log(`\n🔄 Iniciando atualização de dados do Google Analytics`);
+    console.log(`   Período: ${startDate} até ${endDate} (${numOfDays} dia(s))`);
+    
+    // Buscar dados do Google Analytics
+    const gaData = await fetchGoogleAnalyticsData(startDate, endDate);
+    
+    console.log(`✅ Dados recebidos do Google Analytics: ${gaData.length} registros`);
+    
+    // Processar dados e armazenar no banco (usando a mesma tabela clarity_data para compatibilidade)
+    const insertPromises = [];
+    let totalProcessados = 0;
+    let totalComUrl = 0;
+    
+    for (const info of gaData) {
+      totalProcessados++;
+      
+      const url = info.URL || info.url || info.pageUrl || null;
+      
+      if (!url) {
+        console.log(`   ⚠️ Registro ${totalProcessados} sem URL`);
+        continue;
+      }
+      
+      totalComUrl++;
+      const acessos = parseInt(info.totalSessionCount || 0) || 0;
+      const usuariosUnicos = parseInt(info.distantUserCount || 0) || 0;
+      
+      // Extrair identificador da URL (sub2) - usando a mesma função do Clarity
+      const identifierFromUrl = extractIdentifierFromClarityUrl(url);
+      
+      console.log(`   📊 Processando URL: ${url}`);
+      console.log(`      Identificador extraído: ${identifierFromUrl}`);
+      console.log(`      Acessos: ${acessos}`);
+      console.log(`      Usuários Únicos: ${usuariosUnicos}`);
+      
+      if (!identifierFromUrl) {
+        console.log(`   ⚠️ Não foi possível extrair identificador da URL: ${url}`);
+        continue;
+      }
+      
+      const sub2 = identifierFromUrl;
+      
+      // Inserir ou atualizar dados (usando a mesma tabela clarity_data)
+      // Usar INSERT OR REPLACE para evitar erro de constraint UNIQUE
+      const upsertSql = `
+        INSERT INTO clarity_data (url, sub2, acessos, usuarios_unicos, data_coleta, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(url, data_coleta) 
+        DO UPDATE SET 
+          acessos = excluded.acessos,
+          usuarios_unicos = excluded.usuarios_unicos,
+          sub2 = excluded.sub2,
+          updated_at = datetime('now')
+      `;
+      
+      insertPromises.push(
+        new Promise((resolve, reject) => {
+          db.run(upsertSql, [url, sub2, acessos, usuariosUnicos, today], function(err) {
+            if (err) {
+              console.error(`   ❌ Erro ao inserir/atualizar dados para URL ${url}:`, err.message);
+              reject(err);
+            } else {
+              if (this.changes > 0) {
+                if (this.lastID) {
+                  console.log(`   ✅ Registro inserido/atualizado com sucesso (ID: ${this.lastID}, changes: ${this.changes})`);
+                } else {
+                  console.log(`   ✅ Registro atualizado com sucesso (changes: ${this.changes})`);
+                }
+              } else {
+                console.log(`   ⚠️ Nenhuma alteração realizada para URL ${url}`);
+              }
+              resolve();
+            }
+          });
+        })
+      );
+    }
+    
+    console.log(`\n📊 Resumo do processamento:`);
+    console.log(`   Total de registros processados: ${totalProcessados}`);
+    console.log(`   Registros com URL: ${totalComUrl}`);
+    console.log(`   Registros a inserir/atualizar: ${insertPromises.length}`);
+    
+    if (insertPromises.length > 0) {
+      console.log(`\n💾 Iniciando salvamento de ${insertPromises.length} registros...`);
+      try {
+        await Promise.all(insertPromises);
+        console.log(`✅ ${insertPromises.length} registros do Google Analytics salvos/atualizados com sucesso`);
+      } catch (err) {
+        console.error(`❌ Erro ao salvar registros:`, err.message);
+        throw err;
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: 'Dados do Google Analytics atualizados com sucesso',
+      registrosInseridos: insertPromises.length,
+      totalRegistros: gaData.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar dados do Google Analytics:', error.message);
+    res.status(500).json({ 
+      error: 'Erro ao buscar dados do Google Analytics',
+      details: error.message
+    });
+  }
+});
 
 // Iniciar servidor
 app.listen(PORT, () => {

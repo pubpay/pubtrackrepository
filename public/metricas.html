@@ -34,6 +34,10 @@
                         <span>Atualizar Clarity</span>
                         <span id="clarityCount" class="bg-purple-700 px-2 py-1 rounded text-sm">-</span>
                     </button>
+                    <button onclick="atualizarGoogleAnalytics()" id="btnAnalytics" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                        <span>📊</span>
+                        <span>Atualizar Google Analytics</span>
+                    </button>
                 </div>
             </div>
 
@@ -194,6 +198,9 @@
             // Carregar contador de requisições do Clarity
             atualizarContadorClarity();
             
+            // Verificar status do Google Analytics
+            verificarStatusAnalytics();
+            
             // Recarregar métricas quando o filtro de oferta mudar
             document.getElementById('offerFilter').addEventListener('change', () => {
                 carregarMetricas();
@@ -213,6 +220,30 @@
                 }
             });
         });
+
+        // Função para verificar status do Google Analytics
+        async function verificarStatusAnalytics() {
+            try {
+                const response = await fetch('/api/analytics/status');
+                const data = await response.json();
+                
+                const btnAnalytics = document.getElementById('btnAnalytics');
+                // Sempre habilitar o botão - deixar a validação acontecer quando clicar
+                btnAnalytics.disabled = false;
+                btnAnalytics.classList.remove('opacity-50', 'cursor-not-allowed');
+                btnAnalytics.classList.add('hover:bg-blue-600');
+                
+                if (!data.configured) {
+                    console.warn('Google Analytics pode não estar totalmente configurado:', data.message);
+                }
+            } catch (err) {
+                console.error('Erro ao verificar status do Google Analytics:', err);
+                // Mesmo com erro, habilitar o botão para tentar usar
+                const btnAnalytics = document.getElementById('btnAnalytics');
+                btnAnalytics.disabled = false;
+                btnAnalytics.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
 
         // Função para atualizar contador de requisições do Clarity
         async function atualizarContadorClarity() {
@@ -278,6 +309,53 @@
                 // Restaurar botão
                 btnClarity.innerHTML = originalText;
                 atualizarContadorClarity();
+            }
+        }
+
+        // Função para atualizar dados do Google Analytics
+        async function atualizarGoogleAnalytics() {
+            const btnAnalytics = document.getElementById('btnAnalytics');
+            const originalText = btnAnalytics.innerHTML;
+            
+            // Desabilitar botão durante a requisição
+            btnAnalytics.disabled = true;
+            btnAnalytics.innerHTML = '<span>⏳</span> <span>Atualizando...</span>';
+            
+            try {
+                // Primeiro verificar status
+                const statusResponse = await fetch('/api/analytics/status');
+                const statusData = await statusResponse.json();
+                
+                if (!statusData.configured) {
+                    alert(`⚠️ Google Analytics não configurado!\n\n${statusData.message}`);
+                    return;
+                }
+                
+                // Atualizar dados
+                const response = await fetch('/api/analytics/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ numOfDays: 1 })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ Dados do Google Analytics atualizados com sucesso!\n\n${data.registrosInseridos} registros inseridos/atualizados.\n\nTotal de registros: ${data.totalRegistros}`);
+                    
+                    // Recarregar métricas para mostrar novos dados
+                    carregarMetricas();
+                } else {
+                    alert(`❌ Erro ao atualizar dados do Google Analytics:\n${data.error || data.details || 'Erro desconhecido'}`);
+                }
+            } catch (err) {
+                console.error('Erro ao atualizar Google Analytics:', err);
+                alert(`❌ Erro ao atualizar dados do Google Analytics:\n${err.message}`);
+            } finally {
+                // Restaurar botão
+                btnAnalytics.innerHTML = originalText;
             }
         }
 
