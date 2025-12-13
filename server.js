@@ -2897,7 +2897,7 @@ function extractSub2FromUrl(url) {
 // ============================================
 // Configurações do Google Analytics (deve ser configurado via variável de ambiente em produção)
 // O Property ID pode ser encontrado em: Admin > Property Settings > Property ID
-const GA_PROPERTY_ID = process.env.GA_PROPERTY_ID || '514283157'; // ID da propriedade GA4
+const GA_PROPERTY_ID = process.env.GA_PROPERTY_ID || '516281754'; // ID da propriedade GA4
 const GA_CREDENTIALS = process.env.GA_CREDENTIALS || ''; // JSON string das credenciais do Service Account
 const GA_BASE_URL = process.env.GA_BASE_URL || 'https://news.wellhubus.com'; // URL base do site
 
